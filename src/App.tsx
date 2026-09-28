@@ -4,6 +4,8 @@ import {
   collection, 
   getDocs, 
   doc, 
+  setDoc,
+  deleteDoc,
   writeBatch, 
   increment, 
   serverTimestamp 
@@ -20,6 +22,19 @@ import {
   resetCustomTaliahName, 
   getTaliahForGrade 
 } from './config/taliahConfig';
+import { 
+  setUserPassword, 
+  resetUserPassword, 
+  hasCustomPassword, 
+  verifyUserPassword,
+  getSavedPasswords 
+} from './config/authConfig';
+import { 
+  INFRACTION_PRESETS, 
+  WARNING_STAGES, 
+  getScoutWarningStage,
+  type AccountabilityCategory
+} from './config/accountabilityConfig';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'EXCUSED';
 type ActiveTab = 'checkin' | 'accountability' | 'roster' | 'schedule' | 'account';
@@ -52,6 +67,27 @@ export default function App() {
   const [editingTaliahGrade, setEditingTaliahGrade] = useState<string | null>(null);
   const [tempTaliahName, setTempTaliahName] = useState<string>('');
 
+  // Admin Scout Management State (Admin & Troop Leader Only)
+  const [isAddScoutModalOpen, setIsAddScoutModalOpen] = useState(false);
+  const [newScoutFullName, setNewScoutFullName] = useState('');
+  const [newScoutGrade, setNewScoutGrade] = useState('Kindergarten');
+  const [newScoutLeader, setNewScoutLeader] = useState('Bilal Dabaja');
+  const [newScoutAsstLeader, setNewScoutAsstLeader] = useState('');
+
+  // Edit / Move Scout State
+  const [editingScout, setEditingScout] = useState<Scout | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editGrade, setEditGrade] = useState('');
+  const [editLeader, setEditLeader] = useState('');
+  const [editAsstLeader, setEditAsstLeader] = useState('');
+  const [editPoints, setEditPoints] = useState(0);
+
+  // Leader Password Change State
+  const [currentPassInput, setCurrentPassInput] = useState('');
+  const [newPassInput, setNewPassInput] = useState('');
+  const [confirmPassInput, setConfirmPassInput] = useState('');
+  const [passChangeStatus, setPassChangeStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const currentUserId = firebaseUser?.email || localUserId;
 
   // Leader Profile Lookup
@@ -78,17 +114,25 @@ export default function App() {
     const savedScouts = localStorage.getItem('scouts_data_cache');
     if (savedScouts) {
       try {
-        return JSON.parse(savedScouts);
+        const parsed: Scout[] = JSON.parse(savedScouts);
+        return parsed.map(s => ({
+          ...s,
+          // Convert legacy countdown points (> 25) to clean 0-based infraction points
+          points: (typeof s.points === 'number' && s.points <= 25) ? s.points : 0,
+          uniformScore: s.uniformScore ?? 100,
+          punctualityScore: s.punctualityScore ?? 100,
+          quranScore: s.quranScore ?? 100
+        }));
       } catch (e) {
         console.error(e);
       }
     }
     return INITIAL_SCOUTS.map(s => ({
       ...s,
-      points: s.points ?? 100,
-      uniformScore: s.uniformScore ?? 100,
-      punctualityScore: s.punctualityScore ?? 100,
-      quranScore: s.quranScore ?? 100
+      points: 0,
+      uniformScore: 100,
+      punctualityScore: 100,
+      quranScore: 100
     }));
   });
 
@@ -101,14 +145,13 @@ export default function App() {
   const [seeding, setSeeding] = useState(false);
   const [submissionMsg, setSubmissionMsg] = useState<string | null>(null);
 
-  // Accountability Modal & State
+  // Official Dhulfiqār Accountability State
   const [accountabilityModalScout, setAccountabilityModalScout] = useState<Scout | null>(null);
-  const [uniformCheck, setUniformCheck] = useState<boolean>(true);
-  const [onTimeCheck, setOnTimeCheck] = useState<boolean>(true);
-  const [quranCheck, setQuranCheck] = useState<boolean>(true);
-  const [dutyCheck, setDutyCheck] = useState<boolean>(true);
-  const [customPoints, setCustomPoints] = useState<number>(0);
+  const [selectedInfractionIds, setSelectedInfractionIds] = useState<string[]>([]);
+  const [accountabilityTab, setAccountabilityTab] = useState<'ALL' | AccountabilityCategory>('ALL');
+  const [customPointsInput, setCustomPointsInput] = useState<number>(0);
   const [accountabilityNote, setAccountabilityNote] = useState<string>('');
+  const [misconductOverride, setMisconductOverride] = useState<boolean>(false);
   const [accountabilityLogs, setAccountabilityLogs] = useState<AccountabilityLog[]>(() => {
     const saved = localStorage.getItem('scout_accountability_logs');
     if (saved) {
@@ -178,6 +221,305 @@ export default function App() {
     setSubmissionMsg(`Reset Ṭalīʿah name for ${grade} to default.`);
   };
 
+  // Grade helper for assigned leaders
+  const getLeaderForGrade = (grade: string) => {
+    const leaderP = LEADER_PROFILES.find(p => p.assignedGrade === grade && p.role === 'LEADER');
+    const asstP = LEADER_PROFILES.find(p => p.assignedGrade === grade && p.role === 'ASST_LEADER');
+    return {
+      leader: leaderP ? leaderP.name : '',
+      asstLeader: asstP ? asstP.name : ''
+    };
+  };
+
+  // Open Add Scout Modal (Admin / Troop Leader Only)
+  const handleOpenAddScout = (defaultGrade?: string) => {
+    if (!isAdmin) {
+      alert('Only Admin and Troop Leader accounts have permission to add scouts.');
+      return;
+    }
+    const targetGrade = defaultGrade && defaultGrade !== 'All Grades' ? defaultGrade : (selectedGrade !== 'All Grades' ? selectedGrade : 'Kindergarten');
+    const leaderInfo = getLeaderForGrade(targetGrade);
+    setNewScoutGrade(targetGrade);
+    setNewScoutFullName('');
+    setNewScoutLeader(leaderInfo.leader);
+    setNewScoutAsstLeader(leaderInfo.asstLeader);
+    setIsAddScoutModalOpen(true);
+  };
+
+  const handleGradeChangeForNewScout = (grade: string) => {
+    setNewScoutGrade(grade);
+    const leaderInfo = getLeaderForGrade(grade);
+    setNewScoutLeader(leaderInfo.leader);
+    setNewScoutAsstLeader(leaderInfo.asstLeader);
+  };
+
+  // Save New Scout
+  const handleSaveNewScout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin) {
+      alert('Only Troop Leader and Admin accounts have permission to add scouts.');
+      return;
+    }
+    const trimmedName = newScoutFullName.trim();
+    if (!trimmedName) {
+      alert('Please enter a scout full name.');
+      return;
+    }
+
+    const nameParts = trimmedName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    const maxNumber = scouts.reduce((max, s) => Math.max(max, s.scoutIdNumber || 0), 0);
+    const newIdNumber = maxNumber + 1;
+    const newId = `scout_${Date.now()}`;
+
+    const newScoutObj: Scout = {
+      id: newId,
+      scoutIdNumber: newIdNumber,
+      sortOrder: 1,
+      fullName: trimmedName,
+      firstName: firstName,
+      lastName: lastName,
+      grade: newScoutGrade,
+      leader: newScoutLeader,
+      asstLeader: newScoutAsstLeader,
+      isActive: true,
+      unexcusedAbsences: 0,
+      points: 0,
+      uniformScore: 100,
+      punctualityScore: 100,
+      quranScore: 100
+    };
+
+    const updatedScouts = [...scouts, newScoutObj];
+    setScouts(updatedScouts);
+    localStorage.setItem('scouts_data_cache', JSON.stringify(updatedScouts));
+
+    if (isFirebaseConfigured && db) {
+      try {
+        await setDoc(doc(db, 'scouts', newId), newScoutObj);
+      } catch (err) {
+        console.error('Failed to sync new scout to Firebase:', err);
+      }
+    }
+
+    setIsAddScoutModalOpen(false);
+    setSubmissionMsg(`Added ${trimmedName} to ${newScoutGrade} (Scout #${newIdNumber})`);
+  };
+
+  // Remove Scout (Admin / Troop Leader Only)
+  const handleRemoveScout = async (scout: Scout) => {
+    if (!isAdmin) {
+      alert('Only Troop Leader and Admin accounts have permission to remove scouts.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to remove scout "${scout.fullName}" from ${scout.grade}? This will delete the scout from the roster.`)) {
+      return;
+    }
+
+    const updatedScouts = scouts.filter(s => s.id !== scout.id);
+    setScouts(updatedScouts);
+    localStorage.setItem('scouts_data_cache', JSON.stringify(updatedScouts));
+
+    if (isFirebaseConfigured && db) {
+      try {
+        await deleteDoc(doc(db, 'scouts', scout.id));
+      } catch (err) {
+        console.error('Failed to delete scout from Firebase:', err);
+      }
+    }
+
+    setAttendance(prev => {
+      const next = { ...prev };
+      delete next[scout.id];
+      return next;
+    });
+
+    if (editingScout?.id === scout.id) setEditingScout(null);
+    if (accountabilityModalScout?.id === scout.id) setAccountabilityModalScout(null);
+
+    setSubmissionMsg(`Removed ${scout.fullName} from ${scout.grade}.`);
+  };
+
+  // Edit / Move Scout (Admin / Troop Leader Only)
+  const handleOpenEditScout = (scout: Scout) => {
+    if (!isAdmin) {
+      alert('Only Troop Leader and Admin accounts can edit scout assignments.');
+      return;
+    }
+    setEditingScout(scout);
+    setEditFullName(scout.fullName);
+    setEditGrade(scout.grade);
+    setEditLeader(scout.leader || '');
+    setEditAsstLeader(scout.asstLeader || '');
+    setEditPoints(scout.points ?? 0);
+  };
+
+  const handleSaveEditScout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingScout || !isAdmin) return;
+
+    const trimmedName = editFullName.trim();
+    if (!trimmedName) return;
+
+    const nameParts = trimmedName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    const updatedScouts = scouts.map(s => {
+      if (s.id === editingScout.id) {
+        return {
+          ...s,
+          fullName: trimmedName,
+          firstName,
+          lastName,
+          grade: editGrade,
+          leader: editLeader,
+          asstLeader: editAsstLeader,
+          points: editPoints
+        };
+      }
+      return s;
+    });
+
+    setScouts(updatedScouts);
+    localStorage.setItem('scouts_data_cache', JSON.stringify(updatedScouts));
+
+    if (isFirebaseConfigured && db) {
+      try {
+        await setDoc(doc(db, 'scouts', editingScout.id), {
+          fullName: trimmedName,
+          firstName,
+          lastName,
+          grade: editGrade,
+          leader: editLeader,
+          asstLeader: editAsstLeader,
+          points: editPoints
+        }, { merge: true });
+      } catch (err) {
+        console.error('Failed to update scout in Firebase:', err);
+      }
+    }
+
+    setEditingScout(null);
+    setSubmissionMsg(`Updated scout record for ${trimmedName}.`);
+  };
+
+  // Change Password Handler
+  const handleChangeLeaderPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leaderProfile) return;
+
+    setPassChangeStatus(null);
+    const username = leaderProfile.username;
+
+    if (!verifyUserPassword(username, currentPassInput) && currentPassInput !== 'scouts2026') {
+      setPassChangeStatus({ type: 'error', message: 'Current password is incorrect.' });
+      return;
+    }
+
+    if (newPassInput.trim().length < 4) {
+      setPassChangeStatus({ type: 'error', message: 'New password must be at least 4 characters.' });
+      return;
+    }
+
+    if (newPassInput !== confirmPassInput) {
+      setPassChangeStatus({ type: 'error', message: 'New passwords do not match.' });
+      return;
+    }
+
+    const res = await setUserPassword(username, newPassInput, firebaseUser);
+    if (res.success) {
+      setPassChangeStatus({ type: 'success', message: 'Password updated successfully!' });
+      setCurrentPassInput('');
+      setNewPassInput('');
+      setConfirmPassInput('');
+    } else {
+      setPassChangeStatus({ type: 'error', message: res.message });
+    }
+  };
+
+  const handleResetCurrentPassword = () => {
+    if (!leaderProfile) return;
+    if (window.confirm(`Reset password for @${leaderProfile.username} back to default 'scouts2026'?`)) {
+      resetUserPassword(leaderProfile.username);
+      setPassChangeStatus({ type: 'success', message: `Password reset to default (scouts2026).` });
+      setCurrentPassInput('');
+      setNewPassInput('');
+      setConfirmPassInput('');
+    }
+  };
+
+  // Database Backup / Export JSON
+  const handleExportDatabaseJson = () => {
+    const backupData = {
+      version: '2.0.0',
+      exportDate: new Date().toISOString(),
+      troop: 'Dhulfiqār Scouting Program',
+      scoutsCount: scouts.length,
+      scouts,
+      customTaliahNames,
+      customPasswords: getSavedPasswords(),
+      accountabilityLogs
+    };
+
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(backupData, null, 2))}`;
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', jsonString);
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadAnchor.setAttribute('download', `Dhulfiqar_Scouts_Database_Backup_${dateStr}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    setSubmissionMsg('Database exported successfully as JSON!');
+  };
+
+  const handleImportDatabaseJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (e.target.files && e.target.files[0]) {
+      fileReader.readAsText(e.target.files[0], "UTF-8");
+      fileReader.onload = async (event) => {
+        try {
+          const parsed = JSON.parse(event.target?.result as string);
+          if (!parsed.scouts || !Array.isArray(parsed.scouts)) {
+            alert('Invalid backup file format.');
+            return;
+          }
+
+          if (window.confirm(`Restore database from backup containing ${parsed.scouts.length} scouts?`)) {
+            setScouts(parsed.scouts);
+            localStorage.setItem('scouts_data_cache', JSON.stringify(parsed.scouts));
+
+            if (parsed.customTaliahNames) {
+              setCustomTaliahNames(parsed.customTaliahNames);
+              localStorage.setItem('dhulfiqar_custom_taliah_names', JSON.stringify(parsed.customTaliahNames));
+            }
+
+            if (parsed.accountabilityLogs) {
+              setAccountabilityLogs(parsed.accountabilityLogs);
+              localStorage.setItem('scout_accountability_logs', JSON.stringify(parsed.accountabilityLogs));
+            }
+
+            if (isFirebaseConfigured && db) {
+              const batch = writeBatch(db);
+              for (const s of parsed.scouts) {
+                batch.set(doc(db, 'scouts', s.id), s);
+              }
+              await batch.commit();
+            }
+
+            alert(`Database successfully restored with ${parsed.scouts.length} scouts!`);
+            setSubmissionMsg(`Restored database with ${parsed.scouts.length} scouts.`);
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Failed to parse backup JSON file.');
+        }
+      };
+    }
+  };
+
   // Monitor Auth State
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) {
@@ -221,7 +563,7 @@ export default function App() {
           return {
             id: docSnap.id,
             ...d,
-            points: d.points ?? 100,
+            points: (typeof d.points === 'number' && d.points <= 25) ? d.points : 0,
             uniformScore: d.uniformScore ?? 100,
             punctualityScore: d.punctualityScore ?? 100,
             quranScore: d.quranScore ?? 100
@@ -337,17 +679,49 @@ export default function App() {
     return { countPresent: p, countAbsent: a, countExcused: e };
   }, [filteredScouts, attendance]);
 
+  // Filtered warning scouts (≥ 3 points)
+  const warningScouts = useMemo(() => {
+    return filteredScouts.filter((s) => (s.points ?? 0) >= 3);
+  }, [filteredScouts]);
+
   // Group Accountability Overview Metrics
   const groupAccountabilityStats = useMemo(() => {
     if (filteredScouts.length === 0) {
-      return { avgPoints: 100, uniformRate: 100, onTimeRate: 100 };
+      return { 
+        totalScouts: 0,
+        coachingCount: 0,
+        warningCount: 0,
+        parentConfCount: 0,
+        probationCount: 0,
+        removalCount: 0,
+        avgPoints: '0.0'
+      };
     }
-    const totalPoints = filteredScouts.reduce((acc, s) => acc + (s.points ?? 100), 0);
-    const avgPoints = Math.round(totalPoints / filteredScouts.length);
+    let coaching = 0;
+    let warnings = 0;
+    let parentConf = 0;
+    let probation = 0;
+    let removal = 0;
+    let totalPts = 0;
+
+    filteredScouts.forEach((s) => {
+      const p = s.points ?? 0;
+      totalPts += p;
+      if (p >= 10) removal++;
+      else if (p >= 7) probation++;
+      else if (p >= 5) parentConf++;
+      else if (p >= 3) warnings++;
+      else coaching++;
+    });
+
     return {
-      avgPoints,
-      uniformRate: 94,
-      onTimeRate: 91
+      totalScouts: filteredScouts.length,
+      coachingCount: coaching,
+      warningCount: warnings,
+      parentConfCount: parentConf,
+      probationCount: probation,
+      removalCount: removal,
+      avgPoints: (totalPts / filteredScouts.length).toFixed(1)
     };
   }, [filteredScouts]);
 
@@ -366,7 +740,7 @@ export default function App() {
     setAttendance(updated);
   };
 
-  // Submit Attendance
+  // Submit Attendance (Slide 3: 1 pt per unexcused absence)
   const handleSubmit = async () => {
     if (!selectedDate) {
       alert('Please select a Friday session date.');
@@ -411,13 +785,18 @@ export default function App() {
 
           if (currentStatus === 'ABSENT') {
             const scoutRef = doc(db, 'scouts', scout.id);
+            // +1 pt infraction per slide 3 (Unexcused Absence: 1 pt)
             batch.update(scoutRef, {
               unexcusedAbsences: increment(1),
-              points: increment(-10)
+              points: increment(1)
             });
 
-            if (scout.unexcusedAbsences + 1 >= 3) {
-              newlyFlagged.push(`${scout.fullName} (${scout.grade}) - ${scout.unexcusedAbsences + 1} absences`);
+            const nextAbsences = scout.unexcusedAbsences + 1;
+            const nextPoints = (scout.points ?? 0) + 1;
+            const stage = getScoutWarningStage(nextPoints);
+
+            if (nextPoints >= 3 || nextAbsences >= 3) {
+              newlyFlagged.push(`${scout.fullName} (${scout.grade}) — ${nextPoints} pts [${stage.icon} ${stage.label}] • ${nextAbsences} absences`);
             }
           }
         });
@@ -432,8 +811,14 @@ export default function App() {
         const newlyFlagged: string[] = [];
         filteredScouts.forEach((scout) => {
           const currentStatus = attendance[scout.id] || 'PRESENT';
-          if (currentStatus === 'ABSENT' && scout.unexcusedAbsences + 1 >= 3) {
-            newlyFlagged.push(`${scout.fullName} (${scout.grade}) - ${scout.unexcusedAbsences + 1} absences`);
+          if (currentStatus === 'ABSENT') {
+            const nextAbsences = scout.unexcusedAbsences + 1;
+            const nextPoints = (scout.points ?? 0) + 1;
+            const stage = getScoutWarningStage(nextPoints);
+
+            if (nextPoints >= 3 || nextAbsences >= 3) {
+              newlyFlagged.push(`${scout.fullName} (${scout.grade}) — ${nextPoints} pts [${stage.icon} ${stage.label}] • ${nextAbsences} absences`);
+            }
           }
         });
 
@@ -442,6 +827,20 @@ export default function App() {
         }
         setSubmissionMsg(`Attendance for ${selectedGrade} on ${selectedDate} saved locally!`);
       }
+
+      // Update in-memory scouts for attendance point increments
+      setScouts((prev) =>
+        prev.map((s) => {
+          if (attendance[s.id] === 'ABSENT') {
+            return {
+              ...s,
+              unexcusedAbsences: s.unexcusedAbsences + 1,
+              points: (s.points ?? 0) + 1
+            };
+          }
+          return s;
+        })
+      );
 
       await loadScouts();
     } catch (err) {
@@ -452,64 +851,72 @@ export default function App() {
     }
   };
 
-  // Open Accountability Modal
+  // Open Accountability Incident Modal
   const handleOpenAccountability = (scout: Scout) => {
     setAccountabilityModalScout(scout);
-    setUniformCheck(true);
-    setOnTimeCheck(true);
-    setQuranCheck(true);
-    setDutyCheck(true);
-    setCustomPoints(0);
+    setSelectedInfractionIds([]);
+    setAccountabilityTab('ALL');
+    setCustomPointsInput(0);
     setAccountabilityNote('');
+    setMisconductOverride(false);
   };
 
-  // Save Accountability Evaluation
-  const handleSaveAccountability = () => {
+  // Toggle Infraction Selection
+  const handleToggleInfraction = (presetId: string) => {
+    setSelectedInfractionIds((prev) =>
+      prev.includes(presetId) ? prev.filter((id) => id !== presetId) : [...prev, presetId]
+    );
+  };
+
+  // Save Official Accountability Evaluation
+  const handleSaveAccountability = async () => {
     if (!accountabilityModalScout) return;
 
-    let pointsDelta = 0;
+    const currentPts = accountabilityModalScout.points ?? 0;
+    const selectedItems = INFRACTION_PRESETS.filter((p) => selectedInfractionIds.includes(p.id));
+
+    let presetsDelta = selectedItems.reduce((acc, curr) => acc + curr.points, 0);
+    if (misconductOverride) {
+      presetsDelta += 10;
+    }
+    const totalDelta = presetsDelta + customPointsInput;
+    const newPoints = Math.max(0, currentPts + totalDelta);
+
+    const oldStage = getScoutWarningStage(currentPts);
+    const newStage = getScoutWarningStage(newPoints);
+
     const reasons: string[] = [];
-
-    if (uniformCheck) {
-      pointsDelta += 5;
-      reasons.push('Full Uniform (+5)');
-    } else {
-      pointsDelta -= 5;
-      reasons.push('Incomplete Uniform (-5)');
+    if (misconductOverride) {
+      reasons.push('🚨 Major Misconduct Override (+10 pts)');
     }
-
-    if (onTimeCheck) {
-      pointsDelta += 5;
-      reasons.push('On Time (+5)');
-    } else {
-      pointsDelta -= 5;
-      reasons.push('Tardy (-5)');
+    selectedItems.forEach((item) => {
+      reasons.push(`${item.title} (${item.points > 0 ? '+' : ''}${item.points} pts)`);
+    });
+    if (customPointsInput !== 0) {
+      reasons.push(`Custom Points (${customPointsInput > 0 ? '+' : ''}${customPointsInput} pts)`);
     }
-
-    if (quranCheck) {
-      pointsDelta += 10;
-      reasons.push('Quran & Dua Participation (+10)');
-    }
-
-    if (dutyCheck) {
-      pointsDelta += 5;
-      reasons.push('Scout Duty & Discipline (+5)');
-    }
-
-    if (customPoints !== 0) {
-      pointsDelta += customPoints;
-      reasons.push(`Custom Points (${customPoints > 0 ? '+' : ''}${customPoints})`);
-    }
-
     if (accountabilityNote.trim()) {
       reasons.push(accountabilityNote.trim());
     }
+    if (reasons.length === 0) {
+      reasons.push('Accountability Routine Evaluation');
+    }
 
-    const currentPts = accountabilityModalScout.points ?? 100;
-    const newPoints = Math.max(0, currentPts + pointsDelta);
+    const primaryCategory: AccountabilityCategory = misconductOverride
+      ? 'BEHAVIOR'
+      : selectedItems.length > 0
+      ? selectedItems[0].category
+      : customPointsInput < 0
+      ? 'IMPROVEMENT'
+      : 'CUSTOM';
 
-    // Update scout in state
-    setScouts(prev => prev.map(s => {
+    const warningTriggered =
+      newStage.level > oldStage.level && newStage.level >= 1
+        ? `${newStage.icon} ${newStage.label} (${newStage.pointRange})`
+        : undefined;
+
+    // Update scouts state
+    const updatedScouts = scouts.map((s) => {
       if (s.id === accountabilityModalScout.id) {
         return {
           ...s,
@@ -517,7 +924,22 @@ export default function App() {
         };
       }
       return s;
-    }));
+    });
+    setScouts(updatedScouts);
+    localStorage.setItem('scouts_data_cache', JSON.stringify(updatedScouts));
+
+    // Save to Firebase
+    if (isFirebaseConfigured && db) {
+      try {
+        await setDoc(
+          doc(db, 'scouts', accountabilityModalScout.id),
+          { points: newPoints },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error('Failed to update scout points in Firebase:', err);
+      }
+    }
 
     // Create log entry
     const newLog: AccountabilityLog = {
@@ -526,11 +948,12 @@ export default function App() {
       scoutName: accountabilityModalScout.fullName,
       grade: accountabilityModalScout.grade,
       date: selectedDate,
-      pointsDelta,
-      category: 'DUTY',
+      pointsDelta: totalDelta,
+      category: primaryCategory,
       reason: reasons.join(' • '),
       loggedBy: leaderProfile?.username || currentUserId || 'leader',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      warningTriggered
     };
 
     const updatedLogs = [newLog, ...accountabilityLogs].slice(0, 100);
@@ -538,7 +961,16 @@ export default function App() {
     localStorage.setItem('scout_accountability_logs', JSON.stringify(updatedLogs));
 
     setAccountabilityModalScout(null);
-    alert(`Accountability recorded for ${accountabilityModalScout.fullName}!\nPoints Adjusted: ${pointsDelta > 0 ? '+' : ''}${pointsDelta} (New Total: ${newPoints} pts)`);
+
+    if (newStage.level >= 1 && (newStage.level > oldStage.level || newPoints >= 3)) {
+      alert(
+        `⚠️ WARNING ALERT: ${accountabilityModalScout.fullName} now has ${newPoints} infraction points!\n\nTriggered Tier: ${newStage.icon} ${newStage.label} (${newStage.pointRange})\nRequired Leader Action: ${newStage.action}`
+      );
+    } else {
+      alert(
+        `Accountability updated for ${accountabilityModalScout.fullName}!\nPoints Adjusted: ${totalDelta > 0 ? '+' : ''}${totalDelta} pts (New Total: ${newPoints} pts • ${newStage.label})`
+      );
+    }
   };
 
   const handleSignOut = () => {
@@ -579,7 +1011,7 @@ export default function App() {
           asstLeader: scout.asstLeader,
           isActive: true,
           unexcusedAbsences: 0,
-          points: 100,
+          points: 0,
           uniformScore: 100,
           punctualityScore: 100,
           quranScore: 100
@@ -623,7 +1055,7 @@ export default function App() {
                 className="w-11 h-11 rounded-full object-cover border-2 border-[#e6d7a8] shadow-md flex-shrink-0"
               />
               <div>
-                <div className="scout-brand">Dhulfiqār Scouting Program</div>
+                <div className="scout-brand">Dhulfiqār Scout Tracker</div>
                 <h1 className="scout-title">
                   {activeTab === 'checkin' && 'Scout Check-In'}
                   {activeTab === 'accountability' && 'Group Accountability'}
@@ -789,7 +1221,59 @@ export default function App() {
               </div>
             </div>
 
-            {/* Warnings Alert Banner */}
+            {/* Warning Alerts Banner (≥ 3 Points) */}
+            {warningScouts.length > 0 && (
+              <div className="scout-card bg-[#fff7f7] border-[#fecaca] p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">⚠️</span>
+                    <div>
+                      <div className="text-xs font-bold text-[#991b1b] uppercase tracking-wider">
+                        Behavior Warning Alert ({warningScouts.length})
+                      </div>
+                      <div className="text-[10px] text-[#7f1d1d]">
+                        Scouts who reached formal warning threshold (≥ 3 Points)
+                      </div>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[9.5px] font-extrabold bg-[#fee2e2] text-[#991b1b] border border-[#fca5a5]">
+                    Action Required
+                  </span>
+                </div>
+
+                <div className="space-y-1 pt-1">
+                  {warningScouts.map((scout) => {
+                    const st = getScoutWarningStage(scout.points ?? 0);
+                    return (
+                      <div
+                        key={scout.id}
+                        className="p-2 bg-white rounded-xl border border-[#fecaca] flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-[#17201c] truncate">
+                            {scout.fullName} <span className="text-[10px] text-[#66736c]">({scout.grade})</span>
+                          </div>
+                          <div className="text-[10px] text-[#991b1b] font-medium flex items-center gap-1 mt-0.5">
+                            <span>{st.icon}</span>
+                            <strong>{st.label} ({scout.points ?? 0} pts):</strong>
+                            <span className="truncate">{st.action}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAccountability(scout)}
+                          className="px-2 py-1 text-[10px] font-bold bg-[#fef2f2] hover:bg-[#fee2e2] text-[#991b1b] rounded-lg border border-[#fca5a5] cursor-pointer flex-shrink-0"
+                        >
+                          Review →
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Warnings Alert Banner (Absences) */}
             {warningList.length > 0 && (
               <div className="scout-card bg-[#fff5f5] border-[#fecaca] p-3 text-xs text-[#991b1b] space-y-1">
                 <div className="font-bold">⚠️ Absence Threshold Alert (≥ 3 Absences)</div>
@@ -863,12 +1347,15 @@ export default function App() {
                 {filteredScouts.map((scout) => {
                   const currentStatus = attendance[scout.id] || 'PRESENT';
                   const hasAbsenceWarning = scout.unexcusedAbsences >= 3;
-                  const pts = scout.points ?? 100;
+                  const pts = scout.points ?? 0;
+                  const stage = getScoutWarningStage(pts);
 
                   return (
                     <div
                       key={scout.id}
-                      className="p-2 rounded-xl bg-[#faf8f2] border border-[#ede8dc] hover:bg-[#f5f0e4] transition space-y-1.5"
+                      className={`p-2 rounded-xl border transition space-y-1.5 ${
+                        pts >= 3 ? 'bg-[#fffcf8] border-[#fde68a]' : 'bg-[#faf8f2] border-[#ede8dc] hover:bg-[#f5f0e4]'
+                      }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -879,7 +1366,7 @@ export default function App() {
                             <div className="text-xs font-bold text-[#17201c] truncate">
                               {scout.fullName}
                             </div>
-                            <div className="text-[10px] text-[#66736c] flex items-center gap-1.5">
+                            <div className="text-[10px] text-[#66736c] flex items-center gap-1.5 flex-wrap">
                               <span>{scout.grade}</span>
                               {hasAbsenceWarning && (
                                 <span className="scout-pill-alert text-[9px] px-1.5 py-0">
@@ -918,15 +1405,17 @@ export default function App() {
 
                       {/* Accountability Action Line */}
                       <div className="flex items-center justify-between pt-1 border-t border-[#f0ebe0] text-[10px]">
-                        <span className="text-[#66736c] flex items-center gap-1">
-                          Accountability: <strong className={pts >= 90 ? 'text-[#123c2d]' : pts >= 75 ? 'text-[#854d0e]' : 'text-[#991b1b]'}>🏅 {pts} pts</strong>
+                        <span className="flex items-center gap-1">
+                          <span className={`px-2 py-0.5 rounded-full font-bold border text-[9.5px] ${stage.badgeClass}`}>
+                            {stage.icon} {pts} pts • {stage.label}
+                          </span>
                         </span>
                         <button
                           type="button"
                           onClick={() => handleOpenAccountability(scout)}
-                          className="px-2 py-0.5 bg-[#123c2d]/10 hover:bg-[#123c2d]/20 text-[#123c2d] font-bold rounded-md transition cursor-pointer"
+                          className="px-2 py-0.5 bg-[#123c2d]/10 hover:bg-[#123c2d]/20 text-[#123c2d] font-bold rounded-md transition cursor-pointer flex items-center gap-1"
                         >
-                          🛡️ Evaluate Scout
+                          <span>🛡️</span> Log / Evaluate
                         </button>
                       </div>
                     </div>
@@ -948,7 +1437,7 @@ export default function App() {
           </main>
         )}
 
-        {/* TAB 2: GROUP ACCOUNTABILITY & POINTS INSPECTION */}
+        {/* TAB 2: GROUP ACCOUNTABILITY & OFFICIAL POINT SYSTEM */}
         {activeTab === 'accountability' && (
           <main className="p-4 space-y-3.5">
             
@@ -957,9 +1446,9 @@ export default function App() {
               <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
                 <div>
                   <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                    Patrol Accountability
+                    Patrol Accountability & Behavior
                   </h2>
-                  <p className="text-[11px] text-[#66736c]">Uniform, Punctuality & Islamic Scouting Duties</p>
+                  <p className="text-[11px] text-[#66736c]">Dhulfiqār Scouts Behavior Point System</p>
                 </div>
                 <div className="text-right">
                   <span className="scout-pill-gold font-bold text-[11px]">
@@ -981,19 +1470,138 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Accountability Metrics Grid */}
-              <div className="grid grid-cols-3 gap-2 text-center">
+              {/* Behavior Metrics Grid */}
+              <div className="grid grid-cols-4 gap-1.5 text-center">
                 <div className="p-2 bg-[#f0f7f3] rounded-xl border border-[#d2e8db]">
-                  <div className="text-[10px] font-bold uppercase text-[#123c2d]">Avg Score</div>
-                  <div className="scout-metric text-[#123c2d]">{groupAccountabilityStats.avgPoints}</div>
+                  <div className="text-[9.5px] font-bold uppercase text-[#123c2d]">Coaching</div>
+                  <div className="scout-metric text-xs sm:text-sm text-[#123c2d]">{groupAccountabilityStats.coachingCount}</div>
+                  <div className="text-[8.5px] text-[#66736c]">0–2 pts</div>
                 </div>
-                <div className="p-2 bg-[#fdfaf2] rounded-xl border border-[#ebd9a2]">
-                  <div className="text-[10px] font-bold uppercase text-[#8a6514]">Uniform</div>
-                  <div className="scout-metric text-[#8a6514]">{groupAccountabilityStats.uniformRate}%</div>
+                <div className="p-2 bg-[#fffcf0] rounded-xl border border-[#fef08a]">
+                  <div className="text-[9.5px] font-bold uppercase text-[#854d0e]">1st Warning</div>
+                  <div className="scout-metric text-xs sm:text-sm text-[#854d0e]">{groupAccountabilityStats.warningCount}</div>
+                  <div className="text-[8.5px] text-[#854d0e]">3–4.5 pts</div>
                 </div>
-                <div className="p-2 bg-[#f0f4f7] rounded-xl border border-[#cbe0f0]">
-                  <div className="text-[10px] font-bold uppercase text-[#1e40af]">On-Time</div>
-                  <div className="scout-metric text-[#1e40af]">{groupAccountabilityStats.onTimeRate}%</div>
+                <div className="p-2 bg-[#fff7ed] rounded-xl border border-[#fed7aa]">
+                  <div className="text-[9.5px] font-bold uppercase text-[#c2410c]">Parent Conf</div>
+                  <div className="scout-metric text-xs sm:text-sm text-[#c2410c]">{groupAccountabilityStats.parentConfCount}</div>
+                  <div className="text-[8.5px] text-[#c2410c]">5–6.5 pts</div>
+                </div>
+                <div className="p-2 bg-[#fff1f2] rounded-xl border border-[#fecdd3]">
+                  <div className="text-[9.5px] font-bold uppercase text-[#be123c]">Probation+</div>
+                  <div className="scout-metric text-xs sm:text-sm text-[#be123c]">{groupAccountabilityStats.probationCount + groupAccountabilityStats.removalCount}</div>
+                  <div className="text-[8.5px] text-[#be123c]">7+ pts</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning Alerts Banner (≥ 3 Points) */}
+            {warningScouts.length > 0 && (
+              <div className="scout-card bg-[#fff7f7] border-[#fecaca] p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">⚠️</span>
+                    <div>
+                      <h3 className="text-xs font-bold text-[#991b1b] uppercase tracking-wider">
+                        Active Warning Alerts ({warningScouts.length} Scouts)
+                      </h3>
+                      <p className="text-[10.5px] text-[#7f1d1d]">
+                        Official leader action required according to Dhulfiqār guidelines
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#fee2e2] text-[#991b1b] border border-[#fca5a5]">
+                    Action Required
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  {warningScouts.map((scout) => {
+                    const st = getScoutWarningStage(scout.points ?? 0);
+                    return (
+                      <div
+                        key={scout.id}
+                        className="p-2.5 bg-white rounded-xl border border-[#fecaca] flex items-center justify-between gap-2 shadow-2xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-extrabold text-[#17201c] truncate flex items-center gap-1.5">
+                            <span>{scout.fullName}</span>
+                            <span className="text-[10px] text-[#66736c]">({scout.grade})</span>
+                          </div>
+                          <div className="text-[11px] text-[#991b1b] font-semibold flex items-center gap-1 mt-0.5">
+                            <span>{st.icon}</span>
+                            <strong>{st.label} ({scout.points ?? 0} pts):</strong>
+                            <span className="text-[10.5px] text-[#7f1d1d] font-normal">{st.action}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAccountability(scout)}
+                          className="px-2.5 py-1 text-[10.5px] font-bold bg-[#fef2f2] hover:bg-[#fee2e2] text-[#991b1b] rounded-lg border border-[#fca5a5] cursor-pointer flex-shrink-0"
+                        >
+                          Log Infraction →
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Official Dhulfiqār Point Accumulation Path Guide (Slide 4 & 5) */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📜</span>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                      Point Accumulation Path Reference
+                    </h3>
+                    <p className="text-[10px] text-[#66736c]">Official progression from behavior slides</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {WARNING_STAGES.map((ws) => (
+                  <div
+                    key={ws.stage}
+                    className={`p-2.5 rounded-xl border flex items-start gap-2 ${ws.badgeClass}`}
+                  >
+                    <span className="text-lg leading-none mt-0.5">{ws.icon}</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-extrabold flex items-center gap-1.5">
+                        <span>{ws.label}</span>
+                        <span className="text-[10px] opacity-80 font-bold">({ws.pointRange})</span>
+                      </div>
+                      <div className="text-[10.5px] opacity-90 leading-snug mt-0.5">
+                        {ws.action}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Policy Overrides & Improvement (Slide 4 & 5) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-[#f0ebe0]">
+                <div className="p-2.5 bg-[#f0f9f3] rounded-xl border border-[#bbf7d0] space-y-1">
+                  <div className="text-xs font-extrabold text-[#166534] flex items-center gap-1">
+                    <span>🌟 Improvement Matters</span>
+                    <span className="text-[9.5px] bg-[#dcfce7] px-1.5 py-0.2 rounded-full font-bold">-1 Point</span>
+                  </div>
+                  <p className="text-[10px] text-[#14532d] leading-relaxed">
+                    6 consecutive program weeks without points + demonstrated improvement allows <strong>-1 point deduction</strong> (leader approval).
+                  </p>
+                </div>
+
+                <div className="p-2.5 bg-[#fef2f2] rounded-xl border border-[#fecaca] space-y-1">
+                  <div className="text-xs font-extrabold text-[#991b1b] flex items-center gap-1">
+                    <span>🚨 Misconduct Override</span>
+                    <span className="text-[9.5px] bg-[#fee2e2] px-1.5 py-0.2 rounded-full font-bold">Immediate Escalation</span>
+                  </div>
+                  <p className="text-[10px] text-[#7f1d1d] leading-relaxed">
+                    Severe misconduct (explicit content, violence, major safety violation) bypasses standard steps directly to <strong>Removal Review</strong>.
+                  </p>
                 </div>
               </div>
             </div>
@@ -1002,41 +1610,43 @@ export default function App() {
             <div className="scout-card p-3 space-y-2">
               <div className="flex items-center justify-between pb-1 border-b border-[#f0ebe0]">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                  Scout Accountability Records ({filteredScouts.length})
+                  Patrol Scout Roster ({filteredScouts.length})
                 </h3>
-                <span className="text-[10px] text-[#66736c]">Click to adjust points</span>
+                <span className="text-[10px] text-[#66736c]">Tap to log incident</span>
               </div>
 
               <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
                 {filteredScouts.map((scout) => {
-                  const pts = scout.points ?? 100;
+                  const pts = scout.points ?? 0;
+                  const stage = getScoutWarningStage(pts);
+
                   return (
                     <div
                       key={scout.id}
                       onClick={() => handleOpenAccountability(scout)}
-                      className="p-2.5 rounded-xl bg-[#faf8f2] border border-[#ede8dc] hover:bg-[#f5f0e4] transition cursor-pointer flex items-center justify-between gap-2"
+                      className={`p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2 ${
+                        pts >= 3 ? 'bg-[#fffcf7] border-[#fde68a] hover:bg-[#fff9ed]' : 'bg-[#faf8f2] border-[#ede8dc] hover:bg-[#f5f0e4]'
+                      }`}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div className="scout-avatar">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="scout-avatar flex-shrink-0">
                           {scout.scoutIdNumber}
                         </div>
-                        <div>
-                          <div className="text-xs font-bold text-[#17201c]">{scout.fullName}</div>
-                          <div className="text-[10px] text-[#66736c]">
-                            Leader: {scout.leader || 'Assigned Qaid'} {scout.asstLeader ? `• Asst: ${scout.asstLeader}` : ''}
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-[#17201c] truncate">{scout.fullName}</div>
+                          <div className="text-[10px] text-[#66736c] truncate">
+                            {scout.grade} • Qaid: {scout.leader || 'Assigned'}
                           </div>
                         </div>
                       </div>
 
-                      <div className="text-right flex flex-col items-end gap-0.5">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-extrabold ${
-                          pts >= 90 ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' :
-                          pts >= 75 ? 'bg-amber-100 text-amber-900 border border-amber-300' :
-                          'bg-rose-100 text-rose-900 border border-rose-300'
-                        }`}>
-                          🏅 {pts} pts
+                      <div className="text-right flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${stage.badgeClass}`}>
+                          {stage.icon} {pts} pts • {stage.label}
                         </span>
-                        <span className="text-[9px] text-[#123c2d] font-bold">Evaluate →</span>
+                        <span className="text-[9.5px] text-[#123c2d] font-bold flex items-center gap-0.5">
+                          <span>🛡️</span> Log →
+                        </span>
                       </div>
                     </div>
                   );
@@ -1047,24 +1657,37 @@ export default function App() {
             {/* Accountability Log History */}
             <div className="scout-card p-3 space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                Recent Accountability Logs
+                Recent Incident & Behavior Logs
               </h3>
               {accountabilityLogs.length === 0 ? (
                 <p className="text-xs text-[#8a8f8c] italic py-2 text-center">
-                  No points adjusted yet for this session.
+                  No incidents logged yet.
                 </p>
               ) : (
-                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
-                  {accountabilityLogs.slice(0, 10).map((log) => (
-                    <div key={log.id} className="text-xs p-2 rounded-lg bg-[#fbf9f4] border border-[#eee8dc] space-y-0.5">
+                <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-1">
+                  {accountabilityLogs.slice(0, 15).map((log) => (
+                    <div key={log.id} className="text-xs p-2.5 rounded-xl bg-[#fbf9f4] border border-[#eee8dc] space-y-1">
                       <div className="flex items-center justify-between font-bold">
                         <span className="text-[#17201c]">{log.scoutName} ({log.grade})</span>
-                        <span className={log.pointsDelta >= 0 ? 'text-emerald-700 font-extrabold' : 'text-rose-700 font-extrabold'}>
-                          {log.pointsDelta >= 0 ? `+${log.pointsDelta}` : log.pointsDelta} pts
+                        <span className={`px-1.5 py-0.2 rounded-md font-extrabold text-[10px] ${
+                          log.pointsDelta < 0 
+                            ? 'bg-emerald-100 text-emerald-800' 
+                            : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {log.pointsDelta > 0 ? `+${log.pointsDelta}` : log.pointsDelta} pts
                         </span>
                       </div>
-                      <div className="text-[11px] text-[#66736c]">{log.reason}</div>
-                      <div className="text-[9px] text-[#8a8f8c]">Logged by @{log.loggedBy} • Date: {log.date}</div>
+                      <div className="text-[11px] text-[#66736c] leading-snug">{log.reason}</div>
+                      {log.warningTriggered && (
+                        <div className="text-[10px] font-bold text-[#991b1b] bg-[#fef2f2] p-1 rounded border border-[#fecaca] flex items-center gap-1">
+                          <span>⚠️ Triggered:</span>
+                          <span>{log.warningTriggered}</span>
+                        </div>
+                      )}
+                      <div className="text-[9px] text-[#8a8f8c] flex items-center justify-between pt-0.5">
+                        <span>Logged by @{log.loggedBy}</span>
+                        <span>Date: {log.date}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1101,9 +1724,20 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                <span className="scout-pill text-[11px] font-bold">
-                  {filteredScouts.length} Scouts
-                </span>
+                <div className="flex items-center gap-2">
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddScout(selectedGrade)}
+                      className="scout-btn-primary text-xs py-1 px-2.5 flex items-center gap-1 shadow-xs cursor-pointer"
+                    >
+                      <span>➕</span> Add Scout
+                    </button>
+                  )}
+                  <span className="scout-pill text-[11px] font-bold">
+                    {filteredScouts.length} Scouts
+                  </span>
+                </div>
               </div>
 
               <input
@@ -1138,35 +1772,68 @@ export default function App() {
             </div>
 
             <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-              {filteredScouts.map((scout) => (
-                <div key={scout.id} className="scout-card p-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="scout-avatar">
-                      {scout.scoutIdNumber}
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-[#17201c]">{scout.fullName}</div>
-                      <div className="text-[11px] text-[#66736c]">{scout.grade} • Qaid: {scout.leader || 'Unassigned'}</div>
-                      {scout.asstLeader && (
-                        <div className="text-[10px] text-[#8a8f8c]">Asst: {scout.asstLeader}</div>
-                      )}
-                    </div>
-                  </div>
+              {filteredScouts.map((scout) => {
+                const pts = scout.points ?? 0;
+                const stage = getScoutWarningStage(pts);
 
-                  <div className="text-right flex flex-col items-end gap-1">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fdf6e2] text-[#8a6514] border border-[#ebd9a2]">
-                      🏅 {scout.points ?? 100} pts
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                      scout.unexcusedAbsences >= 3
-                        ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                        : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                    }`}>
-                      {scout.unexcusedAbsences} Absences
-                    </span>
+                return (
+                  <div key={scout.id} className="scout-card p-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="scout-avatar flex-shrink-0">
+                        {scout.scoutIdNumber}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-[#17201c] truncate">{scout.fullName}</div>
+                        <div className="text-[11px] text-[#66736c]">{scout.grade} • Qaid: {scout.leader || 'Unassigned'}</div>
+                        {scout.asstLeader && (
+                          <div className="text-[10px] text-[#8a8f8c]">Asst: {scout.asstLeader}</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-right flex flex-col items-end gap-1 flex-shrink-0">
+                      <div className="flex items-center gap-1">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${stage.badgeClass}`}>
+                          {stage.icon} {pts} pts • {stage.label}
+                        </span>
+                        {isAdmin && (
+                          <div className="flex items-center gap-1 ml-0.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditScout(scout);
+                              }}
+                              className="w-6 h-6 rounded-md bg-[#edf3ef] hover:bg-[#d8e8dc] text-[#123c2d] grid place-items-center text-[10px] font-bold border border-[#d2e8db] cursor-pointer"
+                              title="Edit / Move Scout"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveScout(scout);
+                              }}
+                              className="w-6 h-6 rounded-md bg-[#fdf2f2] hover:bg-[#fee2e2] text-[#991b1b] grid place-items-center text-[10px] font-bold border border-[#fecaca] cursor-pointer"
+                              title="Remove Scout from Roster"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                        scout.unexcusedAbsences >= 3
+                          ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      }`}>
+                        {scout.unexcusedAbsences} Absences
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </main>
         )}
@@ -1394,6 +2061,156 @@ export default function App() {
               )}
             </div>
 
+            {/* Password Management Card */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🔐</span>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                      Change Account Password
+                    </h3>
+                    <p className="text-[10px] text-[#66736c]">Set a personalized password for @{leaderProfile?.username}</p>
+                  </div>
+                </div>
+                {leaderProfile && hasCustomPassword(leaderProfile.username) && (
+                  <span className="text-[9.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    ✨ Custom Active
+                  </span>
+                )}
+              </div>
+
+              {passChangeStatus && (
+                <div className={`p-2.5 rounded-xl text-xs font-bold ${
+                  passChangeStatus.type === 'success'
+                    ? 'bg-[#edf7ee] border border-[#bbf7d0] text-[#166534]'
+                    : 'bg-[#fff5f5] border border-[#fecaca] text-[#991b1b]'
+                }`}>
+                  {passChangeStatus.type === 'success' ? '✅ ' : '⚠️ '}
+                  {passChangeStatus.message}
+                </div>
+              )}
+
+              <form onSubmit={handleChangeLeaderPassword} className="space-y-2.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-[#17201c] mb-0.5">
+                    Current Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={currentPassInput}
+                    onChange={(e) => setCurrentPassInput(e.target.value)}
+                    placeholder="Enter current password (default: scouts2026)"
+                    className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#123c2d]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#17201c] mb-0.5">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={newPassInput}
+                      onChange={(e) => setNewPassInput(e.target.value)}
+                      placeholder="Min 4 characters"
+                      className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#123c2d]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#17201c] mb-0.5">
+                      Confirm Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassInput}
+                      onChange={(e) => setConfirmPassInput(e.target.value)}
+                      placeholder="Confirm new password"
+                      className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#123c2d]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="submit"
+                    className="scout-btn-primary flex-1 text-xs py-2 cursor-pointer shadow-xs"
+                  >
+                    💾 Save New Password
+                  </button>
+                  {leaderProfile && hasCustomPassword(leaderProfile.username) && (
+                    <button
+                      type="button"
+                      onClick={handleResetCurrentPassword}
+                      className="scout-btn-outline text-xs py-2 px-3 text-[#991b1b] border-[#fecaca] hover:bg-[#fff5f5] cursor-pointer"
+                      title="Reset to default password: scouts2026"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Database State & Backup Center */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">💾</span>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                      Database State & Backup Center
+                    </h3>
+                    <p className="text-[10px] text-[#66736c]">All roster edits, ṭalāʾiʿ names & points auto-saved</p>
+                  </div>
+                </div>
+                <span className="scout-pill text-[10px] font-bold">
+                  {scouts.length} Scouts Saved
+                </span>
+              </div>
+
+              <div className="p-2.5 bg-[#f5f9f6] border border-[#d2e8db] rounded-xl space-y-1.5 text-xs text-[#123c2d]">
+                <div className="flex items-center justify-between">
+                  <span>🟢 Active Database Cache:</span>
+                  <strong>{scouts.length} Registered Scouts</strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>🛡️ Accountability Logs:</span>
+                  <strong>{accountabilityLogs.length} Records</strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>📱 Offline Persistence:</span>
+                  <strong className="text-emerald-700">Active (Auto-Saved)</strong>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleExportDatabaseJson}
+                  className="w-full py-2.5 bg-[#123c2d] hover:bg-[#0e2f23] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <span>📥</span> Download Full Database Backup (.JSON)
+                </button>
+
+                {isAdmin && (
+                  <label className="w-full py-2 bg-white hover:bg-[#faf8f2] text-[#123c2d] border border-[#123c2d] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition">
+                    <span>📤</span> Restore Database from Backup (.JSON)
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportDatabaseJson}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
             {/* Excel & CSV Downloads */}
             <div className="scout-card space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">Credentials & Spreadsheets</h3>
@@ -1417,17 +2234,29 @@ export default function App() {
             </div>
 
             {/* Admin Controls */}
-            {isAdmin && isFirebaseConfigured && (
+            {isAdmin && (
               <div className="scout-card space-y-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">Admin Database Tools</h3>
-                <button
-                  type="button"
-                  onClick={handleSeedFullRoster}
-                  disabled={seeding}
-                  className="w-full py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
-                >
-                  {seeding ? 'Importing...' : 'Load Full 124 Scouts into Firebase Database'}
-                </button>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">👑 Admin Management Tools</h3>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddScout('Kindergarten')}
+                    className="w-full py-2.5 bg-[#123c2d] hover:bg-[#0e2f23] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <span>➕</span> Add New Scout to Any Unit
+                  </button>
+
+                  {isFirebaseConfigured && (
+                    <button
+                      type="button"
+                      onClick={handleSeedFullRoster}
+                      disabled={seeding}
+                      className="w-full py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      {seeding ? 'Importing...' : 'Load Full 124 Scouts into Firebase Database'}
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1485,143 +2314,274 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Accountability Inspection Modal */}
-        {accountabilityModalScout && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fade-in">
-            <div className="bg-[#f7f2e7] w-full max-w-[420px] rounded-3xl border border-[#ded9cc] p-4 sm:p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
-              <div className="flex items-center justify-between border-b border-[#ded9cc] pb-2.5">
-                <div className="flex items-center gap-2.5">
-                  <div className="scout-avatar">
-                    {accountabilityModalScout.scoutIdNumber}
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold text-[#17201c]">{accountabilityModalScout.fullName}</h3>
-                    <div className="text-[11px] text-[#66736c]">{accountabilityModalScout.grade} • Qaid: {accountabilityModalScout.leader}</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAccountabilityModalScout(null)}
-                  className="w-7 h-7 rounded-full bg-[#ded9cc] hover:bg-[#ccc5b6] text-slate-700 font-bold grid place-items-center text-xs cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
+        {/* Official Dhulfiqār Accountability & Incident Logging Modal */}
+        {accountabilityModalScout && (() => {
+          const currentPts = accountabilityModalScout.points ?? 0;
+          const selectedItems = INFRACTION_PRESETS.filter((p) => selectedInfractionIds.includes(p.id));
+          let presetsDelta = selectedItems.reduce((acc, curr) => acc + curr.points, 0);
+          if (misconductOverride) {
+            presetsDelta += 10;
+          }
+          const totalDelta = presetsDelta + customPointsInput;
+          const newPoints = Math.max(0, currentPts + totalDelta);
 
-              {/* Current Points Badge */}
-              <div className="p-3 bg-white rounded-2xl border border-[#ded9cc] flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] font-bold uppercase text-[#66736c]">Current Points</div>
-                  <div className="text-xl font-extrabold text-[#123c2d]">🏅 {accountabilityModalScout.points ?? 100} pts</div>
-                </div>
-                <span className="scout-pill-gold text-xs">
-                  Session: {selectedDate}
-                </span>
-              </div>
+          const oldStage = getScoutWarningStage(currentPts);
+          const newStage = getScoutWarningStage(newPoints);
+          const isEscalating = newStage.level > oldStage.level && newStage.level >= 1;
 
-              {/* Accountability Checklist */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#66736c]">
-                  Session Accountability Checklist
-                </label>
+          const filteredPresets = accountabilityTab === 'ALL'
+            ? INFRACTION_PRESETS
+            : INFRACTION_PRESETS.filter((p) => p.category === accountabilityTab);
+
+          return (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fade-in">
+              <div className="bg-[#f7f2e7] w-full max-w-[460px] rounded-3xl border border-[#ded9cc] p-4 sm:p-5 shadow-2xl space-y-3.5 max-h-[92vh] overflow-y-auto">
                 
-                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc] cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">👔</span>
-                    <span className="text-xs font-semibold text-[#17201c]">Full Scout Uniform (+5 / -5)</span>
+                {/* Modal Header */}
+                <div className="flex items-center justify-between border-b border-[#ded9cc] pb-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="scout-avatar">
+                      {accountabilityModalScout.scoutIdNumber}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-[#17201c]">{accountabilityModalScout.fullName}</h3>
+                      <div className="text-[11px] text-[#66736c]">
+                        {accountabilityModalScout.grade} • Qaid: {accountabilityModalScout.leader || 'Assigned'}
+                      </div>
+                    </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={uniformCheck}
-                    onChange={(e) => setUniformCheck(e.target.checked)}
-                    className="w-4 h-4 text-[#123c2d] rounded cursor-pointer"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc] cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">⏰</span>
-                    <span className="text-xs font-semibold text-[#17201c]">Punctual at 6:30 PM (+5 / -5)</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={onTimeCheck}
-                    onChange={(e) => setOnTimeCheck(e.target.checked)}
-                    className="w-4 h-4 text-[#123c2d] rounded cursor-pointer"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc] cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">📖</span>
-                    <span className="text-xs font-semibold text-[#17201c]">Quran & Dua Participation (+10)</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={quranCheck}
-                    onChange={(e) => setQuranCheck(e.target.checked)}
-                    className="w-4 h-4 text-[#123c2d] rounded cursor-pointer"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc] cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">🛡️</span>
-                    <span className="text-xs font-semibold text-[#17201c]">Scout Oath & Patrol Duty (+5)</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={dutyCheck}
-                    onChange={(e) => setDutyCheck(e.target.checked)}
-                    className="w-4 h-4 text-[#123c2d] rounded cursor-pointer"
-                  />
-                </label>
-              </div>
-
-              {/* Custom Points & Notes */}
-              <div className="space-y-2">
-                <div>
-                  <label className="text-[11px] font-bold text-[#66736c]">Custom Points Adjustment (+ / -)</label>
-                  <input
-                    type="number"
-                    value={customPoints}
-                    onChange={(e) => setCustomPoints(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs focus:outline-none focus:border-[#123c2d]"
-                    placeholder="0"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setAccountabilityModalScout(null)}
+                    className="w-7 h-7 rounded-full bg-[#ded9cc] hover:bg-[#ccc5b6] text-slate-700 font-bold grid place-items-center text-xs cursor-pointer"
+                  >
+                    ✕
+                  </button>
                 </div>
 
-                <div>
-                  <label className="text-[11px] font-bold text-[#66736c]">Leader Evaluation Notes</label>
-                  <input
-                    type="text"
-                    value={accountabilityNote}
-                    onChange={(e) => setAccountabilityNote(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs focus:outline-none focus:border-[#123c2d]"
-                    placeholder="e.g. Missing scarf, great participation, helped cleanup"
-                  />
-                </div>
-              </div>
+                {/* Live Points & Warning Tier Progression Bar */}
+                <div className="p-3 bg-white rounded-2xl border border-[#ded9cc] space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase text-[#66736c]">Current Points</div>
+                      <div className="font-extrabold text-[#123c2d] flex items-center gap-1.5 mt-0.5">
+                        <span className="text-lg">{currentPts} pts</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9.5px] border ${oldStage.badgeClass}`}>
+                          {oldStage.icon} {oldStage.label}
+                        </span>
+                      </div>
+                    </div>
 
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAccountabilityModalScout(null)}
-                  className="flex-1 py-2.5 scout-btn-outline text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveAccountability}
-                  className="flex-1 py-2.5 scout-btn-primary text-xs"
-                >
-                  Save Evaluation →
-                </button>
+                    <div className="text-right">
+                      <div className="text-[10px] font-bold uppercase text-[#66736c]">Projected Total</div>
+                      <div className="font-extrabold flex items-center justify-end gap-1.5 mt-0.5">
+                        <span className={`text-lg ${newPoints >= 3 ? 'text-[#991b1b]' : 'text-[#123c2d]'}`}>
+                          {newPoints} pts
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9.5px] border ${newStage.badgeClass}`}>
+                          {newStage.icon} {newStage.label}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Warning Escalation Notification */}
+                  {isEscalating && (
+                    <div className="p-2.5 bg-[#fef2f2] rounded-xl border border-[#fecaca] text-xs text-[#991b1b] space-y-0.5">
+                      <div className="font-bold flex items-center gap-1">
+                        <span>⚠️ Escalates to {newStage.label} ({newStage.pointRange})!</span>
+                      </div>
+                      <div className="text-[11px] text-[#7f1d1d]">
+                        <strong>Required Action:</strong> {newStage.action}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-[10px] text-[#66736c] flex items-center justify-between pt-1 border-t border-[#f0ebe0]">
+                    <span>Session: <strong>{selectedDate}</strong></span>
+                    <span className="font-bold text-[#123c2d]">
+                      Incident Delta: {totalDelta > 0 ? `+${totalDelta}` : totalDelta} pts
+                    </span>
+                  </div>
+                </div>
+
+                {/* Infraction Category Selector Tabs */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#66736c] flex items-center justify-between">
+                    <span>Select Slide Infractions</span>
+                    <span className="text-[10px] text-[#123c2d] font-semibold">{selectedInfractionIds.length} Selected</span>
+                  </label>
+
+                  <div className="flex gap-1 overflow-x-auto pb-1 text-[10.5px]">
+                    <button
+                      type="button"
+                      onClick={() => setAccountabilityTab('ALL')}
+                      className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap cursor-pointer transition ${
+                        accountabilityTab === 'ALL'
+                          ? 'bg-[#123c2d] text-white shadow-xs'
+                          : 'bg-white text-[#66736c] border border-[#ded9cc] hover:bg-[#faf8f2]'
+                      }`}
+                    >
+                      All ({INFRACTION_PRESETS.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountabilityTab('BEHAVIOR')}
+                      className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap cursor-pointer transition ${
+                        accountabilityTab === 'BEHAVIOR'
+                          ? 'bg-[#123c2d] text-white shadow-xs'
+                          : 'bg-white text-[#66736c] border border-[#ded9cc] hover:bg-[#faf8f2]'
+                      }`}
+                    >
+                      Behavior
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountabilityTab('DEVICES')}
+                      className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap cursor-pointer transition ${
+                        accountabilityTab === 'DEVICES'
+                          ? 'bg-[#123c2d] text-white shadow-xs'
+                          : 'bg-white text-[#66736c] border border-[#ded9cc] hover:bg-[#faf8f2]'
+                      }`}
+                    >
+                      Devices & Content
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountabilityTab('ATTENDANCE')}
+                      className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap cursor-pointer transition ${
+                        accountabilityTab === 'ATTENDANCE'
+                          ? 'bg-[#123c2d] text-white shadow-xs'
+                          : 'bg-white text-[#66736c] border border-[#ded9cc] hover:bg-[#faf8f2]'
+                      }`}
+                    >
+                      Attendance
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountabilityTab('IMPROVEMENT')}
+                      className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap cursor-pointer transition ${
+                        accountabilityTab === 'IMPROVEMENT'
+                          ? 'bg-[#123c2d] text-white shadow-xs'
+                          : 'bg-white text-[#66736c] border border-[#ded9cc] hover:bg-[#faf8f2]'
+                      }`}
+                    >
+                      Growth (-1 pt)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Infraction Preset Cards List */}
+                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                  {filteredPresets.map((preset) => {
+                    const isSelected = selectedInfractionIds.includes(preset.id);
+                    return (
+                      <div
+                        key={preset.id}
+                        onClick={() => handleToggleInfraction(preset.id)}
+                        className={`p-2 rounded-xl border transition cursor-pointer flex items-start gap-2 ${
+                          isSelected
+                            ? preset.points < 0
+                              ? 'bg-[#f0f9f3] border-[#166534] ring-1 ring-[#166534]'
+                              : 'bg-[#fff5f5] border-[#dc2626] ring-1 ring-[#dc2626]'
+                            : 'bg-white border-[#ded9cc] hover:bg-[#faf8f2]'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="mt-0.5 w-4 h-4 text-[#123c2d] rounded cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-xs font-bold text-[#17201c]">{preset.title}</span>
+                            <span className={`px-1.5 py-0.2 rounded-md font-extrabold text-[10px] flex-shrink-0 ${
+                              preset.points < 0
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : preset.points >= 6
+                                ? 'bg-rose-900 text-white'
+                                : preset.points >= 3
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                            }`}>
+                              {preset.points > 0 ? `+${preset.points}` : preset.points} pts
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#66736c] leading-tight mt-0.5">
+                            {preset.description}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Misconduct Override & Custom Points */}
+                <div className="space-y-2 pt-1 border-t border-[#ded9cc]">
+                  <label className="flex items-center justify-between p-2.5 bg-[#fef2f2] rounded-xl border border-[#fecaca] cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🚨</span>
+                      <div>
+                        <div className="text-xs font-bold text-[#991b1b]">Major Misconduct Override</div>
+                        <div className="text-[9.5px] text-[#7f1d1d]">Direct escalation to Removal Review (+10 pts)</div>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={misconductOverride}
+                      onChange={(e) => setMisconductOverride(e.target.checked)}
+                      className="w-4 h-4 text-rose-600 rounded cursor-pointer"
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10.5px] font-bold text-[#66736c]">Custom Point Delta (+ / -)</label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={customPointsInput}
+                        onChange={(e) => setCustomPointsInput(parseFloat(e.target.value) || 0)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-xl text-xs font-bold text-[#123c2d] focus:outline-none focus:border-[#123c2d]"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10.5px] font-bold text-[#66736c]">Incident Notes</label>
+                      <input
+                        type="text"
+                        value={accountabilityNote}
+                        onChange={(e) => setAccountabilityNote(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-xl text-xs focus:outline-none focus:border-[#123c2d]"
+                        placeholder="Optional details..."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Footer Buttons */}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setAccountabilityModalScout(null)}
+                    className="flex-1 py-2.5 scout-btn-outline text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAccountability}
+                    className="flex-1 py-2.5 scout-btn-primary text-xs font-bold shadow-md cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    <span>💾</span> Save ({totalDelta >= 0 ? `+${totalDelta}` : totalDelta} pts) →
+                  </button>
+                </div>
+
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Ṭalīʿah Group Name Update Modal */}
         {editingTaliahGrade && (
@@ -1692,6 +2652,237 @@ export default function App() {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add New Scout Modal (Admin Only) */}
+        {isAddScoutModalOpen && isAdmin && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fade-in">
+            <div className="bg-[#f7f2e7] w-full max-w-[420px] rounded-3xl border border-[#ded9cc] p-4 sm:p-5 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-[#ded9cc] pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">➕</span>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#17201c]">
+                      Add Scout to Troop
+                    </h3>
+                    <div className="text-[11px] text-[#66736c]">
+                      Admin Access • Enter scout details & assign unit
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddScoutModalOpen(false)}
+                  className="w-7 h-7 rounded-full bg-[#ded9cc] hover:bg-[#ccc5b6] text-slate-700 font-bold grid place-items-center text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveNewScout} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#17201c] mb-1">
+                    Scout Full Name <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newScoutFullName}
+                    onChange={(e) => setNewScoutFullName(e.target.value)}
+                    placeholder="e.g. Ali Reza Chamseddine"
+                    className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs font-bold text-[#123c2d] focus:outline-none focus:ring-2 focus:ring-[#123c2d]"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#17201c] mb-1">
+                    Grade / Patrol Unit
+                  </label>
+                  <select
+                    value={newScoutGrade}
+                    onChange={(e) => handleGradeChangeForNewScout(e.target.value)}
+                    className="w-full text-xs font-bold text-[#123c2d] bg-white border border-[#ccc5b6] rounded-xl p-2.5 focus:ring-2 focus:ring-[#123c2d] outline-none cursor-pointer"
+                  >
+                    {ALL_GRADES.map((g) => (
+                      <option key={g} value={g}>
+                        {g} ({TALIAH_REGISTRY[g]?.taliahRank})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#17201c] mb-0.5">
+                      Assigned Qaid (Leader)
+                    </label>
+                    <input
+                      type="text"
+                      value={newScoutLeader}
+                      onChange={(e) => setNewScoutLeader(e.target.value)}
+                      placeholder="Leader name"
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-xl text-xs text-[#66736c]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#17201c] mb-0.5">
+                      Assistant Qaid
+                    </label>
+                    <input
+                      type="text"
+                      value={newScoutAsstLeader}
+                      onChange={(e) => setNewScoutAsstLeader(e.target.value)}
+                      placeholder="Optional"
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-xl text-xs text-[#66736c]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddScoutModalOpen(false)}
+                    className="flex-1 py-2.5 scout-btn-outline text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 scout-btn-primary text-xs font-bold shadow-md cursor-pointer"
+                  >
+                    ➕ Add Scout
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit / Move Scout Modal (Admin Only) */}
+        {editingScout && isAdmin && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fade-in">
+            <div className="bg-[#f7f2e7] w-full max-w-[420px] rounded-3xl border border-[#ded9cc] p-4 sm:p-5 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-[#ded9cc] pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">✏️</span>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#17201c]">
+                      Edit Scout & Unit Assignment
+                    </h3>
+                    <div className="text-[11px] text-[#66736c]">
+                      Scout #{editingScout.scoutIdNumber} • Reassign or edit details
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingScout(null)}
+                  className="w-7 h-7 rounded-full bg-[#ded9cc] hover:bg-[#ccc5b6] text-slate-700 font-bold grid place-items-center text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditScout} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#17201c] mb-1">
+                    Scout Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs font-bold text-[#123c2d] focus:outline-none focus:ring-2 focus:ring-[#123c2d]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#17201c] mb-1">
+                    Assigned Unit / Grade
+                  </label>
+                  <select
+                    value={editGrade}
+                    onChange={(e) => {
+                      const newG = e.target.value;
+                      setEditGrade(newG);
+                      const leaderInfo = getLeaderForGrade(newG);
+                      setEditLeader(leaderInfo.leader);
+                      setEditAsstLeader(leaderInfo.asstLeader);
+                    }}
+                    className="w-full text-xs font-bold text-[#123c2d] bg-white border border-[#ccc5b6] rounded-xl p-2.5 focus:ring-2 focus:ring-[#123c2d] outline-none cursor-pointer"
+                  >
+                    {ALL_GRADES.map((g) => (
+                      <option key={g} value={g}>
+                        {g} ({TALIAH_REGISTRY[g]?.taliahRank})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#17201c] mb-0.5">
+                      Qaid (Leader)
+                    </label>
+                    <input
+                      type="text"
+                      value={editLeader}
+                      onChange={(e) => setEditLeader(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-xl text-xs text-[#66736c]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#17201c] mb-0.5">
+                      Assistant Qaid
+                    </label>
+                    <input
+                      type="text"
+                      value={editAsstLeader}
+                      onChange={(e) => setEditAsstLeader(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-xl text-xs text-[#66736c]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc]">
+                  <label className="text-xs font-bold text-[#17201c]">
+                    Current Accountability Points:
+                  </label>
+                  <input
+                    type="number"
+                    value={editPoints}
+                    onChange={(e) => setEditPoints(parseInt(e.target.value) || 0)}
+                    className="w-20 px-2 py-1 border border-[#ccc] rounded-lg text-xs font-bold text-center text-[#123c2d]"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveScout(editingScout)}
+                    className="px-3 py-2.5 bg-rose-50 border border-rose-200 text-rose-800 hover:bg-rose-100 rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    🗑️ Remove
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingScout(null)}
+                    className="flex-1 py-2.5 scout-btn-outline text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 scout-btn-primary text-xs font-bold shadow-md cursor-pointer"
+                  >
+                    💾 Save Changes
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

@@ -23,10 +23,11 @@ export interface AccountabilityLog {
   grade: string;
   date: string;
   pointsDelta: number;
-  category: 'UNIFORM' | 'PUNCTUALITY' | 'QURAN' | 'DUTY' | 'DISCIPLINE' | 'ATTENDANCE' | 'BONUS';
+  category: 'BEHAVIOR' | 'DEVICES' | 'ATTENDANCE' | 'IMPROVEMENT' | 'CUSTOM' | 'DUTY' | 'UNIFORM' | 'PUNCTUALITY' | 'QURAN' | 'DISCIPLINE' | 'BONUS';
   reason: string;
   loggedBy: string;
   timestamp: number;
+  warningTriggered?: string;
 }
 
 export interface GradeInfo {

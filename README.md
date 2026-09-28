@@ -1,32 +1,45 @@
-# React + TypeScript + Vite
+# ⚜️ Dhulfiqār Scout Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Official Attendance & Accountability Mobile Web App for the **Dhulfiqār Scouting Program**.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🌟 Key Features
 
-## React Compiler
+* **Universal Mobile Compatibility (PWA)**: Works natively on any iPhone (Safari) and Android (Chrome) with "Add to Home Screen" support.
+* **11 Ṭalāʾiʿ (Patrol Groups)**:
+  * Lions - KG: *Ṭalīʿat al-Mahdi (ʿaj)*
+  * Tigers - 1st: *Ṭalīʿat al-Muṣṭafā (ṣ)*
+  * Wolf - 2nd: *Ṭalīʿat aṣ-Ṣādiq (ʿa)*
+  * Bear - 3rd: *Ṭalīʿat ar-Riḍā (ʿa)*
+  * Webelos - 4th: *Ṭalīʿat TBD* (Customizable)
+  * Arrow of Light - 5th: *Ṭalīʿat Amīr al-Muʾminīn (ʿa)*
+  * Patrol 1 - 6th: *Ṭalīʿat ʿIshāq al-Ḥusayn (ʿa)*
+  * Patrol 2 - 6th/7th: *Ṭalīʿat Abū al-Faḍl al-ʿAbbās*
+  * Patrol 3 - 8th: *Ṭalīʿat al-Bāqir (ʿa)*
+  * Patrol 4 - 9th: *Ṭalīʿat Asadullāh (ʿa)*
+  * Patrol 5 - 10th/11th: *Ṭalīʿat Abā ʿAbdillāh (ʿa)*
+* **Admin & Troop Leader Exclusive Controls**:
+  * Only `@leader` and `@admin` can **Add**, **Remove**, or **Reassign** scouts across units.
+* **Personalized Leader Passwords**:
+  * Every leader can change their password from the Leader Portal with persistent storage. Default: `scouts2026`.
+* **Accountability & Honor System**:
+  * Uniform checks ($\pm 5$ pts), Punctuality at 6:30 PM ($\pm 5$ pts), Quran/Dua recital ($+10$ pts), Patrol Duty ($+5$ pts), and audit history.
+* **1-Click Database Persistence & JSON Backup/Restore**:
+  * Complete roster and session data saved locally and live-synced to Firebase Firestore.
+  * Download/Upload full database JSON snapshots at any time.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## 🚀 Running the App
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+```bash
+# Install dependencies
+npm install
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+# Start Vite local development server
+npm run dev
+
+# Build for production
+npm run build
 ```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.

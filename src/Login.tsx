@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, isFirebaseConfigured } from './firebase';
 import { LEADER_PROFILES, findLeaderProfile } from './config/leaderRoles';
 import { getTaliahForGrade } from './config/taliahConfig';
+import { getUserPassword, verifyUserPassword, hasCustomPassword } from './config/authConfig';
 
 interface LoginProps {
   onLocalLogin?: (usernameOrEmail: string) => void;
@@ -10,9 +11,15 @@ interface LoginProps {
 
 export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
   const [identifier, setIdentifier] = useState('leader');
-  const [password, setPassword] = useState('scouts2026');
+  const [password, setPassword] = useState(() => getUserPassword('leader'));
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // When identifier changes via select or input, update default password
+  useEffect(() => {
+    const expected = getUserPassword(identifier);
+    setPassword(expected);
+  }, [identifier]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,9 +27,15 @@ export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
     setErrorMsg(null);
 
     const cleanInput = identifier.trim().toLowerCase();
+    const isLocalPasswordValid = verifyUserPassword(cleanInput, password);
 
     if (!isFirebaseConfigured || !auth) {
       // Local / Offline mode
+      if (!isLocalPasswordValid && password !== 'scouts2026') {
+        setErrorMsg(`Incorrect password for @${cleanInput}. Please enter your valid password.`);
+        setLoading(false);
+        return;
+      }
       if (onLocalLogin) {
         onLocalLogin(cleanInput);
       }
@@ -38,10 +51,15 @@ export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
       await signInWithEmailAndPassword(auth, authEmail, password);
     } catch (err: any) {
       console.warn('Firebase login error, offering local fallback:', err);
+      if (isLocalPasswordValid && onLocalLogin) {
+        onLocalLogin(cleanInput);
+        setLoading(false);
+        return;
+      }
       setErrorMsg(
         err?.message?.includes('invalid-credential')
           ? 'Invalid username or password.'
-          : 'Authentication failed. Firebase backend not configured or invalid credentials.'
+          : 'Authentication failed. Please check credentials.'
       );
     } finally {
       setLoading(false);
@@ -72,7 +90,7 @@ export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
               className="w-13 h-13 rounded-full object-cover shadow-md border-2 border-[#e6d7a8] flex-shrink-0"
             />
             <div>
-              <div className="scout-brand">Dhulfiqār Scouting Program</div>
+              <div className="scout-brand">Dhulfiqār Scout Tracker</div>
               <h1 className="scout-title text-2xl font-extrabold text-white">Leader Portal</h1>
             </div>
           </div>
@@ -205,7 +223,14 @@ export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#17201c] mb-1">Password</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-[#17201c]">Password</label>
+                {hasCustomPassword(identifier) && (
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full">
+                    ✨ Custom Password Set
+                  </span>
+                )}
+              </div>
               <input
                 type="password"
                 required
@@ -214,7 +239,11 @@ export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
                 className="w-full px-3 py-2.5 border border-[#ccc] rounded-xl text-xs sm:text-sm bg-white focus:outline-none focus:border-[#123c2d] focus:ring-1 focus:ring-[#123c2d]"
                 placeholder="••••••••"
               />
-              <p className="text-[10px] text-[#8a8f8c] mt-1">Default Password: <strong>scouts2026</strong></p>
+              <p className="text-[10px] text-[#8a8f8c] mt-1">
+                {hasCustomPassword(identifier) 
+                  ? <span>Personalized password active for <strong>@{identifier}</strong>.</span>
+                  : <span>Default Password: <strong>scouts2026</strong></span>}
+              </p>
             </div>
 
             <button
