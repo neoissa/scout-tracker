@@ -4,13 +4,25 @@ import {
   collection, 
   getDocs, 
   doc, 
-  setDoc,
-  deleteDoc,
+  setDoc, 
+  deleteDoc, 
   writeBatch, 
   increment, 
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot,
+  query,
+  orderBy,
+  limit
 } from 'firebase/firestore';
-import { db, auth, isFirebaseConfigured } from './firebase';
+import { 
+  db, 
+  auth, 
+  isFirebaseConfigured, 
+  getActiveFirebaseConfig, 
+  saveRuntimeFirebaseConfig, 
+  clearRuntimeFirebaseConfig,
+  type FirebaseConfigParams 
+} from './firebase';
 import { Login } from './Login';
 import { INITIAL_SCOUTS, type Scout, type AccountabilityLog } from './data/roster';
 import { FRIDAY_SESSIONS } from './data/schedule';
@@ -71,6 +83,20 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('checkin');
   const [rosterSearch, setRosterSearch] = useState('');
 
+  // Firebase Cloud Config Modal State
+  const [isFirebaseConfigModalOpen, setIsFirebaseConfigModalOpen] = useState(false);
+  const [fbConfigInput, setFbConfigInput] = useState<FirebaseConfigParams>(() => {
+    const active = getActiveFirebaseConfig();
+    return active || {
+      apiKey: '',
+      authDomain: '',
+      projectId: '',
+      storageBucket: '',
+      messagingSenderId: '',
+      appId: '',
+    };
+  });
+
   // Ṭalīʿah Custom Names State
   const [customTaliahNames, setCustomTaliahNames] = useState<Record<string, string>>(() => getSavedTaliahNames());
   const [editingTaliahGrade, setEditingTaliahGrade] = useState<string | null>(null);
@@ -119,31 +145,8 @@ export default function App() {
     return getTaliahForGrade(leaderProfile.assignedGrade, customTaliahNames);
   }, [leaderProfile, customTaliahNames]);
 
-  const [scouts, setScouts] = useState<Scout[]>(() => {
-    const savedScouts = localStorage.getItem('scouts_data_cache');
-    if (savedScouts) {
-      try {
-        const parsed: Scout[] = JSON.parse(savedScouts);
-        return parsed.map(s => ({
-          ...s,
-          // Convert legacy countdown points (> 25) to clean 0-based infraction points
-          points: (typeof s.points === 'number' && s.points <= 25) ? s.points : 0,
-          uniformScore: s.uniformScore ?? 100,
-          punctualityScore: s.punctualityScore ?? 100,
-          quranScore: s.quranScore ?? 100
-        }));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    return INITIAL_SCOUTS.map(s => ({
-      ...s,
-      points: 0,
-      uniformScore: 100,
-      punctualityScore: 100,
-      quranScore: 100
-    }));
-  });
+  // Scouts State
+  const [scouts, setScouts] = useState<Scout[]>(INITIAL_SCOUTS);
 
   const [selectedGrade, setSelectedGrade] = useState<string>('All Grades');
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
@@ -161,17 +164,7 @@ export default function App() {
   const [customPointsInput, setCustomPointsInput] = useState<number>(0);
   const [accountabilityNote, setAccountabilityNote] = useState<string>('');
   const [misconductOverride, setMisconductOverride] = useState<boolean>(false);
-  const [accountabilityLogs, setAccountabilityLogs] = useState<AccountabilityLog[]>(() => {
-    const saved = localStorage.getItem('scout_accountability_logs');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    return [];
-  });
+  const [accountabilityLogs, setAccountabilityLogs] = useState<AccountabilityLog[]>([]);
 
   // Live Patrol Progress & Attendance Export State
   const [exportGradeSelection, setExportGradeSelection] = useState<string>('All Units');
@@ -183,12 +176,81 @@ export default function App() {
   const [simCurrentPoints, setSimCurrentPoints] = useState<number>(2);
   const [simSelectedPresetId, setSimSelectedPresetId] = useState<string>('beh_moderate_2');
 
-  // Save scouts cache to localStorage on update
+  // Real-time Firestore Listeners: Scouts, Logs, Config
   useEffect(() => {
-    if (scouts.length > 0) {
-      localStorage.setItem('scouts_data_cache', JSON.stringify(scouts));
-    }
-  }, [scouts]);
+    if (!isFirebaseConfigured || !db) return;
+
+    // 1. Real-time Scouts Listener
+    const unsubScouts = onSnapshot(collection(db, 'scouts'), async (snapshot) => {
+      if (snapshot.empty) {
+        console.log('Firebase scouts collection is empty, auto-seeding 124 initial scouts...');
+        try {
+          const batch = writeBatch(db);
+          for (const scout of INITIAL_SCOUTS) {
+            const docRef = doc(db, 'scouts', scout.id);
+            batch.set(docRef, scout);
+          }
+          await batch.commit();
+        } catch (seedErr) {
+          console.error('Error auto-seeding scouts to Firebase:', seedErr);
+        }
+        return;
+      }
+
+      const list = snapshot.docs.map((docSnap) => {
+        const d = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...d,
+          points: (typeof d.points === 'number') ? d.points : 0,
+          uniformScore: d.uniformScore ?? 100,
+          punctualityScore: d.punctualityScore ?? 100,
+          quranScore: d.quranScore ?? 100
+        };
+      }) as Scout[];
+
+      list.sort((a, b) => {
+        const sortA = a.sortOrder ?? 99;
+        const sortB = b.sortOrder ?? 99;
+        if (sortA !== sortB) return sortA - sortB;
+        const idA = a.scoutIdNumber ?? 999;
+        const idB = b.scoutIdNumber ?? 999;
+        if (idA !== idB) return idA - idB;
+        return a.fullName.localeCompare(b.fullName);
+      });
+
+      setScouts(list);
+    }, (err) => {
+      console.warn('Firestore scouts subscription note:', err);
+    });
+
+    // 2. Real-time Accountability Logs Listener
+    const logsQuery = query(collection(db, 'accountability_logs'), orderBy('timestamp', 'desc'), limit(150));
+    const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
+      const list = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data()
+      })) as AccountabilityLog[];
+      setAccountabilityLogs(list);
+    }, (err) => {
+      console.warn('Firestore logs subscription note:', err);
+    });
+
+    // 3. Real-time Ṭalīʿah Names Config Listener
+    const unsubTaliah = onSnapshot(doc(db, 'app_config', 'taliah_names'), (docSnap) => {
+      if (docSnap.exists()) {
+        setCustomTaliahNames(docSnap.data() as Record<string, string>);
+      }
+    }, (err) => {
+      console.warn('Firestore taliah config note:', err);
+    });
+
+    return () => {
+      unsubScouts();
+      unsubLogs();
+      unsubTaliah();
+    };
+  }, []);
 
   // Set initial selected grade based on leader role
   useEffect(() => {
@@ -324,16 +386,14 @@ export default function App() {
       quranScore: 100
     };
 
-    const updatedScouts = [...scouts, newScoutObj];
-    setScouts(updatedScouts);
-    localStorage.setItem('scouts_data_cache', JSON.stringify(updatedScouts));
-
     if (isFirebaseConfigured && db) {
       try {
         await setDoc(doc(db, 'scouts', newId), newScoutObj);
       } catch (err) {
         console.error('Failed to sync new scout to Firebase:', err);
       }
+    } else {
+      setScouts(prev => [...prev, newScoutObj]);
     }
 
     setIsAddScoutModalOpen(false);
@@ -350,16 +410,14 @@ export default function App() {
       return;
     }
 
-    const updatedScouts = scouts.filter(s => s.id !== scout.id);
-    setScouts(updatedScouts);
-    localStorage.setItem('scouts_data_cache', JSON.stringify(updatedScouts));
-
     if (isFirebaseConfigured && db) {
       try {
         await deleteDoc(doc(db, 'scouts', scout.id));
       } catch (err) {
         console.error('Failed to delete scout from Firebase:', err);
       }
+    } else {
+      setScouts(prev => prev.filter(s => s.id !== scout.id));
     }
 
     setAttendance(prev => {
@@ -399,25 +457,6 @@ export default function App() {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    const updatedScouts = scouts.map(s => {
-      if (s.id === editingScout.id) {
-        return {
-          ...s,
-          fullName: trimmedName,
-          firstName,
-          lastName,
-          grade: editGrade,
-          leader: editLeader,
-          asstLeader: editAsstLeader,
-          points: editPoints
-        };
-      }
-      return s;
-    });
-
-    setScouts(updatedScouts);
-    localStorage.setItem('scouts_data_cache', JSON.stringify(updatedScouts));
-
     if (isFirebaseConfigured && db) {
       try {
         await setDoc(doc(db, 'scouts', editingScout.id), {
@@ -432,6 +471,17 @@ export default function App() {
       } catch (err) {
         console.error('Failed to update scout in Firebase:', err);
       }
+    } else {
+      setScouts(scouts.map(s => s.id === editingScout.id ? {
+        ...s,
+        fullName: trimmedName,
+        firstName,
+        lastName,
+        grade: editGrade,
+        leader: editLeader,
+        asstLeader: editAsstLeader,
+        points: editPoints
+      } : s));
     }
 
     setEditingScout(null);
@@ -681,40 +731,27 @@ export default function App() {
     }
   };
 
-  // Load session attendance records for selected date
+  // Real-time Firestore Session Attendance Listener
   useEffect(() => {
-    if (!currentUserId || scouts.length === 0 || !selectedDate) return;
-    loadSessionAttendance(selectedDate);
-  }, [selectedDate, scouts.length, currentUserId]);
+    if (!currentUserId || !selectedDate) return;
 
-  const loadSessionAttendance = async (date: string) => {
+    if (!isFirebaseConfigured || !db) {
+      const initialMap: Record<string, AttendanceStatus> = {};
+      scouts.forEach((scout) => {
+        initialMap[scout.id] = 'PRESENT';
+      });
+      setAttendance(initialMap);
+      return;
+    }
+
     setLoadingSession(true);
-    try {
-      let existingData: Record<string, AttendanceStatus> = {};
-
-      if (isFirebaseConfigured && db) {
-        try {
-          const sessionRecordsRef = collection(db, 'sessions', date, 'records');
-          const snap = await getDocs(sessionRecordsRef);
-          snap.docs.forEach((docSnap) => {
-            const d = docSnap.data();
-            if (d.status) existingData[docSnap.id] = d.status as AttendanceStatus;
-          });
-        } catch (err) {
-          console.warn('Could not read session from Firebase:', err);
-        }
-      }
-
-      if (Object.keys(existingData).length === 0) {
-        const localData = localStorage.getItem(`attendance_${date}`);
-        if (localData) {
-          try {
-            existingData = JSON.parse(localData);
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      }
+    const sessionRecordsRef = collection(db, 'sessions', selectedDate, 'records');
+    const unsubscribe = onSnapshot(sessionRecordsRef, (snap) => {
+      const existingData: Record<string, AttendanceStatus> = {};
+      snap.docs.forEach((docSnap) => {
+        const d = docSnap.data();
+        if (d.status) existingData[docSnap.id] = d.status as AttendanceStatus;
+      });
 
       const initialMap: Record<string, AttendanceStatus> = {};
       scouts.forEach((scout) => {
@@ -722,10 +759,14 @@ export default function App() {
       });
 
       setAttendance(initialMap);
-    } finally {
       setLoadingSession(false);
-    }
-  };
+    }, (err) => {
+      console.warn('Could not read session attendance from Firebase:', err);
+      setLoadingSession(false);
+    });
+
+    return () => unsubscribe();
+  }, [selectedDate, scouts.length, currentUserId]);
 
   // Filtered scouts strictly scoped by Leader assignment or Admin selection
   const filteredScouts = useMemo(() => {
@@ -871,8 +912,6 @@ export default function App() {
     setSubmissionMsg(null);
 
     try {
-      localStorage.setItem(`attendance_${selectedDate}`, JSON.stringify(attendance));
-
       if (isFirebaseConfigured && db) {
         const batch = writeBatch(db);
         const newlyFlagged: string[] = [];
@@ -1029,19 +1068,6 @@ export default function App() {
         ? `${newStage.icon} ${newStage.label} (${newStage.pointRange})`
         : undefined;
 
-    // Update scouts state
-    const updatedScouts = scouts.map((s) => {
-      if (s.id === accountabilityModalScout.id) {
-        return {
-          ...s,
-          points: newPoints
-        };
-      }
-      return s;
-    });
-    setScouts(updatedScouts);
-    localStorage.setItem('scouts_data_cache', JSON.stringify(updatedScouts));
-
     // Save to Firebase
     if (isFirebaseConfigured && db) {
       try {
@@ -1053,6 +1079,8 @@ export default function App() {
       } catch (err) {
         console.error('Failed to update scout points in Firebase:', err);
       }
+    } else {
+      setScouts(prev => prev.map(s => s.id === accountabilityModalScout.id ? { ...s, points: newPoints } : s));
     }
 
     // Create log entry
@@ -1070,9 +1098,15 @@ export default function App() {
       warningTriggered
     };
 
-    const updatedLogs = [newLog, ...accountabilityLogs].slice(0, 100);
-    setAccountabilityLogs(updatedLogs);
-    localStorage.setItem('scout_accountability_logs', JSON.stringify(updatedLogs));
+    if (isFirebaseConfigured && db) {
+      try {
+        await setDoc(doc(db, 'accountability_logs', newLog.id), newLog);
+      } catch (err) {
+        console.error('Failed to save log to Firebase:', err);
+      }
+    } else {
+      setAccountabilityLogs(prev => [newLog, ...prev].slice(0, 100));
+    }
 
     setAccountabilityModalScout(null);
 
@@ -2644,57 +2678,74 @@ export default function App() {
               </form>
             </div>
 
-            {/* Database State & Backup Center (Admin & Troop Leader Only) */}
+            {/* Cloud Database & Firebase Real-Time Sync (Admin & Troop Leader Only) */}
             {isAdmin && (
               <div className="scout-card space-y-3">
                 <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">💾</span>
+                    <span className="text-lg">☁️</span>
                     <div>
                       <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                        Database State & Backup Center
+                        Firebase Cloud Database
                       </h3>
-                      <p className="text-[10px] text-[#66736c]">All roster edits, ṭalāʾiʿ names & points auto-saved</p>
+                      <p className="text-[10px] text-[#66736c]">Real-time cloud synchronization & single source of truth</p>
                     </div>
                   </div>
-                  <span className="scout-pill text-[10px] font-bold">
-                    {scouts.length} Scouts Saved
+                  <span className={`scout-pill text-[10px] font-bold ${
+                    isFirebaseConfigured ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'
+                  }`}>
+                    {isFirebaseConfigured ? '🟢 Live Firestore' : '🟡 Cloud Setup Pending'}
                   </span>
                 </div>
 
                 <div className="p-2.5 bg-[#f5f9f6] border border-[#d2e8db] rounded-xl space-y-1.5 text-xs text-[#123c2d]">
                   <div className="flex items-center justify-between">
-                    <span>🟢 Active Database Cache:</span>
-                    <strong>{scouts.length} Registered Scouts</strong>
+                    <span>☁️ Cloud Database:</span>
+                    <strong className="text-emerald-800 font-bold">
+                      {isFirebaseConfigured ? `Connected (${getActiveFirebaseConfig()?.projectId || 'Firestore'})` : 'Local Standalone'}
+                    </strong>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>🛡️ Accountability Logs:</span>
-                    <strong>{accountabilityLogs.length} Records</strong>
+                    <span>👥 Live Synced Scouts:</span>
+                    <strong>{scouts.length} Scouts in Firestore</strong>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>📱 Offline Persistence:</span>
-                    <strong className="text-emerald-700">Active (Auto-Saved)</strong>
+                    <span>🛡️ Incident & Point Logs:</span>
+                    <strong>{accountabilityLogs.length} Cloud Records</strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>🔄 Multi-Device Sync:</span>
+                    <strong className="text-emerald-700">Real-Time onSnapshot Active</strong>
                   </div>
                 </div>
 
                 <div className="space-y-2 pt-1">
                   <button
                     type="button"
-                    onClick={handleExportDatabaseJson}
+                    onClick={() => setIsFirebaseConfigModalOpen(true)}
                     className="w-full py-2.5 bg-[#123c2d] hover:bg-[#0e2f23] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
                   >
-                    <span>📥</span> Download Full Database Backup (.JSON)
+                    <span>⚙️</span> Configure Firebase Cloud Project Credentials
                   </button>
 
-                  <label className="w-full py-2 bg-white hover:bg-[#faf8f2] text-[#123c2d] border border-[#123c2d] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition">
-                    <span>📤</span> Restore Database from Backup (.JSON)
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleImportDatabaseJson}
-                      className="hidden"
-                    />
-                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleExportDatabaseJson}
+                      className="w-full py-2 bg-white hover:bg-[#faf8f2] text-[#123c2d] border border-[#123c2d] rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <span>📥</span> Export JSON
+                    </button>
+                    <label className="w-full py-2 bg-white hover:bg-[#faf8f2] text-[#123c2d] border border-[#123c2d] rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer">
+                      <span>📤</span> Restore JSON
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleImportDatabaseJson}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
@@ -3266,6 +3317,141 @@ export default function App() {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Firebase Cloud Configuration Modal (Admin Only) */}
+        {isFirebaseConfigModalOpen && isAdmin && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fade-in">
+            <div className="bg-[#f7f2e7] w-full max-w-[440px] rounded-3xl border border-[#ded9cc] p-4 sm:p-5 shadow-2xl space-y-3.5 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-[#ded9cc] pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">☁️</span>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#17201c]">
+                      Firebase Cloud Database Config
+                    </h3>
+                    <div className="text-[11px] text-[#66736c]">
+                      Google Cloud Firestore live multi-device synchronization
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsFirebaseConfigModalOpen(false)}
+                  className="w-7 h-7 rounded-full bg-[#ded9cc] hover:bg-[#ccc5b6] text-slate-700 font-bold grid place-items-center text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="text-xs text-[#123c2d] bg-[#f0f7f3] border border-[#d2e8db] p-3 rounded-xl space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>🟢</span> Pure Cloud Firestore Mode
+                </div>
+                <p className="text-[11px] text-[#33594b] leading-tight">
+                  Once configured, all scout check-ins, points, and duties store directly in your Google Firebase Cloud Firestore database with real-time live streaming across all leaders' phones.
+                </p>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!fbConfigInput.apiKey.trim() || !fbConfigInput.projectId.trim()) {
+                    alert('Please enter at least an API Key and Project ID.');
+                    return;
+                  }
+                  saveRuntimeFirebaseConfig(fbConfigInput);
+                }}
+                className="space-y-2.5 text-xs"
+              >
+                <div>
+                  <label className="block font-bold text-[#17201c] mb-0.5">Firebase API Key <span className="text-rose-600">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={fbConfigInput.apiKey}
+                    onChange={(e) => setFbConfigInput({ ...fbConfigInput, apiKey: e.target.value })}
+                    placeholder="AIzaSy..."
+                    className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-lg font-mono text-[11px]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-bold text-[#17201c] mb-0.5">Project ID <span className="text-rose-600">*</span></label>
+                    <input
+                      type="text"
+                      required
+                      value={fbConfigInput.projectId}
+                      onChange={(e) => setFbConfigInput({ ...fbConfigInput, projectId: e.target.value })}
+                      placeholder="scout-tracker-..."
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-lg font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-[#17201c] mb-0.5">Auth Domain</label>
+                    <input
+                      type="text"
+                      value={fbConfigInput.authDomain}
+                      onChange={(e) => setFbConfigInput({ ...fbConfigInput, authDomain: e.target.value })}
+                      placeholder="project.firebaseapp.com"
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-lg font-mono text-[11px]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-bold text-[#17201c] mb-0.5">Storage Bucket</label>
+                    <input
+                      type="text"
+                      value={fbConfigInput.storageBucket}
+                      onChange={(e) => setFbConfigInput({ ...fbConfigInput, storageBucket: e.target.value })}
+                      placeholder="project.appspot.com"
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-lg font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-[#17201c] mb-0.5">App ID</label>
+                    <input
+                      type="text"
+                      value={fbConfigInput.appId}
+                      onChange={(e) => setFbConfigInput({ ...fbConfigInput, appId: e.target.value })}
+                      placeholder="1:123456789:web:..."
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-lg font-mono text-[11px]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-[#ded9cc]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Clear saved Firebase config?')) {
+                        clearRuntimeFirebaseConfig();
+                      }
+                    }}
+                    className="scout-btn-outline text-xs text-rose-700 py-2 px-3 cursor-pointer"
+                  >
+                    Clear Config
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsFirebaseConfigModalOpen(false)}
+                    className="flex-1 py-2 scout-btn-outline text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2 scout-btn-primary text-xs font-bold shadow-md cursor-pointer"
+                  >
+                    💾 Save & Connect
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

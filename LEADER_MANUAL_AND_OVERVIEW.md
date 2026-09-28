@@ -220,11 +220,11 @@ Use the **2 unlocked Test Sessions**:
 * `2026-09-28` — *App Test Day 2: Live Duty & Evaluation Simulation*  
 You can freely mark attendance, test absence points, and download test reports without affecting actual scout records.
 
-#### Q3: Will data be lost if a leader closes Safari or Chrome?
-**No.** All data is stored in the browser's persistent database (`localStorage` & `IndexedDB`). It automatically restores when the app is reopened.
+#### Q3: Where is the data stored and will it sync across all leaders' phones?
+**In Google Cloud Firebase Firestore.** All scout records, attendance matrices, points, and incident logs are stored directly in your Firebase cloud database. Using Firestore real-time listeners (`onSnapshot`), updates made on one leader's phone instantly stream live to all other leaders and the admin dashboard without manual refreshing.
 
 #### Q4: How does a leader reset or change their password?
-Navigate to the **⚙️ Portal** tab, scroll to **Security & Password Management**, enter the current password, type the new password twice, and tap **Update Password**.
+Navigate to the **⚙️ Portal** tab, scroll to **Security & Password Management**, enter the current password, type the new password twice, and tap **Update Password**. The updated password syncs to Firebase immediately.
 
 ---
 
