@@ -11,11 +11,20 @@ export interface FridaySession {
 export const FRIDAY_SESSIONS: FridaySession[] = [
   {
     "date": "2026-09-25",
-    "time": "19:00:00",
-    "event": "Leader Retreat/Camp",
-    "location": "TBD",
-    "notes": "",
-    "isProgram": false,
+    "time": "6:30 PM - 9:00 PM",
+    "event": "🧪 App Test Day 1: Point Counter & Check-In Trial",
+    "location": "Troop HQ / Practice Sandbox",
+    "notes": "Practice session 1: Test live attendance check-in, point counter, and absence penalties.",
+    "isProgram": true,
+    "isNoProgram": false
+  },
+  {
+    "date": "2026-09-28",
+    "time": "6:30 PM - 9:00 PM",
+    "event": "🛠️ App Test Day 2: Live Duty & Evaluation Simulation",
+    "location": "Troop HQ / Practice Sandbox",
+    "notes": "Practice session 2: Test incident logging, warning escalations, and live Excel/CSV export.",
+    "isProgram": true,
     "isNoProgram": false
   },
   {

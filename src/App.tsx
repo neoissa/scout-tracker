@@ -54,6 +54,14 @@ const ALL_GRADES = [
   '10th / 11th Grade'
 ];
 
+export function getTodayDateString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [localUserId, setLocalUserId] = useState<string | null>(() => {
@@ -193,10 +201,23 @@ export default function App() {
     }
   }, [leaderProfile]);
 
-  // Active Friday date selection
+  // Active Today's Date String and Future Date Guard
+  const todayDateStr = useMemo(() => getTodayDateString(), []);
+
+  // Active Friday date selection (Defaults to active test session or nearest available non-future date)
   const programFridays = useMemo(() => FRIDAY_SESSIONS.filter(s => s.isProgram), []);
-  const [selectedDate, setSelectedDate] = useState<string>(programFridays[0]?.date || '2026-10-02');
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const today = getTodayDateString();
+    const exactToday = FRIDAY_SESSIONS.find(s => s.date === today && s.isProgram);
+    if (exactToday) return exactToday.date;
+    const past = FRIDAY_SESSIONS.filter(s => s.isProgram && s.date <= today);
+    if (past.length > 0) return past[past.length - 1].date;
+    return '2026-09-28';
+  });
   const [filterProgramOnly, setFilterProgramOnly] = useState<boolean>(true);
+
+  // Future Session Lock Flag: True if session date is in the future
+  const isFutureDate = selectedDate > todayDateStr;
 
   const availableFridays = useMemo(() => {
     return filterProgramOnly ? programFridays : FRIDAY_SESSIONS;
@@ -835,6 +856,11 @@ export default function App() {
       return;
     }
 
+    if (isFutureDate) {
+      alert(`Attendance is locked for future sessions (${selectedDate}). Attendance can only be taken on or after the scheduled date.`);
+      return;
+    }
+
     if (filteredScouts.length === 0) {
       alert('No scouts to submit attendance for.');
       return;
@@ -1225,11 +1251,15 @@ export default function App() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="w-full text-xs sm:text-sm font-bold text-[#123c2d] bg-[#f7f2e7] border border-[#ccc5b6] rounded-xl p-2.5 focus:ring-2 focus:ring-[#123c2d] outline-none cursor-pointer"
               >
-                {availableFridays.map((session, idx) => (
-                  <option key={`${session.date}-${idx}`} value={session.date}>
-                    {session.date} {session.isProgram ? '🟢 [Program Session]' : session.isNoProgram ? '🔴 [Break / No Session]' : '🟡 [Special Event]'} {session.notes ? `(${session.notes})` : ''}
-                  </option>
-                ))}
+                {availableFridays.map((session, idx) => {
+                  const isFuture = session.date > todayDateStr;
+                  const isTestSession = session.date === '2026-09-25' || session.date === '2026-09-28';
+                  return (
+                    <option key={`${session.date}-${idx}`} value={session.date}>
+                      {session.date} {isTestSession ? '🧪 [TEST SANDBOX]' : isFuture ? '🔒 [LOCKED - Future]' : '🟢 [ACTIVE]'} {session.event} {session.notes ? `(${session.notes})` : ''}
+                    </option>
+                  );
+                })}
               </select>
 
               {currentSessionInfo && (
@@ -1239,6 +1269,44 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* Future Session Lock Alert Banner */}
+            {isFutureDate && (
+              <div className="scout-card bg-[#fffbeb] border-[#fde047] p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🔒</span>
+                    <div>
+                      <h3 className="text-xs font-bold text-[#854d0e] uppercase tracking-wider">
+                        Future Attendance Locked (Scheduled for {selectedDate})
+                      </h3>
+                      <p className="text-[10.5px] text-[#713f12]">
+                        Leaders cannot record attendance in advance. This session unlocks on <strong>{selectedDate}</strong>.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[9.5px] font-extrabold bg-[#fef08a] text-[#854d0e] border border-[#facc15] flex-shrink-0">
+                    Locked
+                  </span>
+                </div>
+                <div className="pt-1 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate('2026-09-28')}
+                    className="px-3 py-1.5 bg-[#123c2d] hover:bg-[#0e2f23] text-white font-bold rounded-lg text-[11px] cursor-pointer shadow-xs flex items-center gap-1.5"
+                  >
+                    <span>🛠️</span> Switch to Test Day 2 (Active Today: 2026-09-28)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate('2026-09-25')}
+                    className="px-2.5 py-1.5 bg-white hover:bg-[#faf8f2] text-[#123c2d] font-bold rounded-lg text-[11px] border border-[#123c2d] cursor-pointer"
+                  >
+                    <span>🧪</span> Test Day 1 (2026-09-25)
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Admin Grade Tabs (If Admin) */}
             {isAdmin && (
@@ -1287,22 +1355,25 @@ export default function App() {
               <div className="flex items-center justify-between gap-1.5 mt-3 pt-2.5 border-t border-[#f0ebe0]">
                 <button
                   type="button"
+                  disabled={isFutureDate}
                   onClick={() => handleSetAll('PRESENT')}
-                  className="flex-1 py-1.5 text-[11px] font-bold bg-[#edf3ef] hover:bg-[#d8e8dc] text-[#123c2d] rounded-lg transition"
+                  className="flex-1 py-1.5 text-[11px] font-bold bg-[#edf3ef] hover:bg-[#d8e8dc] text-[#123c2d] rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   All Present
                 </button>
                 <button
                   type="button"
+                  disabled={isFutureDate}
                   onClick={() => handleSetAll('ABSENT')}
-                  className="flex-1 py-1.5 text-[11px] font-bold bg-[#fdf2f2] hover:bg-[#fde2e2] text-[#991b1b] rounded-lg transition"
+                  className="flex-1 py-1.5 text-[11px] font-bold bg-[#fdf2f2] hover:bg-[#fde2e2] text-[#991b1b] rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   All Absent
                 </button>
                 <button
                   type="button"
+                  disabled={isFutureDate}
                   onClick={() => handleSetAll('EXCUSED')}
-                  className="flex-1 py-1.5 text-[11px] font-bold bg-[#fefce8] hover:bg-[#fef9c3] text-[#854d0e] rounded-lg transition"
+                  className="flex-1 py-1.5 text-[11px] font-bold bg-[#fefce8] hover:bg-[#fef9c3] text-[#854d0e] rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   All Excused
                 </button>
@@ -1469,22 +1540,28 @@ export default function App() {
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             type="button"
+                            disabled={isFutureDate}
                             onClick={() => handleStatusToggle(scout.id, 'PRESENT')}
-                            className={`scout-choice ${currentStatus === 'PRESENT' ? 'sel-p' : ''}`}
+                            className={`scout-choice ${currentStatus === 'PRESENT' ? 'sel-p' : ''} ${isFutureDate ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            title={isFutureDate ? 'Locked for future dates' : 'Mark Present'}
                           >
                             P
                           </button>
                           <button
                             type="button"
+                            disabled={isFutureDate}
                             onClick={() => handleStatusToggle(scout.id, 'ABSENT')}
-                            className={`scout-choice ${currentStatus === 'ABSENT' ? 'sel-a' : ''}`}
+                            className={`scout-choice ${currentStatus === 'ABSENT' ? 'sel-a' : ''} ${isFutureDate ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            title={isFutureDate ? 'Locked for future dates' : 'Mark Absent (+1 pt)'}
                           >
                             A
                           </button>
                           <button
                             type="button"
+                            disabled={isFutureDate}
                             onClick={() => handleStatusToggle(scout.id, 'EXCUSED')}
-                            className={`scout-choice ${currentStatus === 'EXCUSED' ? 'sel-e' : ''}`}
+                            className={`scout-choice ${currentStatus === 'EXCUSED' ? 'sel-e' : ''} ${isFutureDate ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            title={isFutureDate ? 'Locked for future dates' : 'Mark Excused'}
                           >
                             E
                           </button>
@@ -1515,10 +1592,18 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={saving || filteredScouts.length === 0}
-                className="w-full scout-btn-primary text-sm shadow-md mt-2 flex items-center justify-center gap-2 disabled:opacity-50"
+                disabled={saving || filteredScouts.length === 0 || isFutureDate}
+                className={`w-full text-sm shadow-md mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition ${
+                  isFutureDate
+                    ? 'bg-[#ece9df] text-[#8a8f8c] border border-[#d1cbbe] cursor-not-allowed'
+                    : 'scout-btn-primary disabled:opacity-50 cursor-pointer'
+                }`}
               >
-                {saving ? 'Saving...' : `Submit Attendance for ${selectedGrade} →`}
+                {isFutureDate
+                  ? `🔒 Attendance Locked (Future Date: ${selectedDate})`
+                  : saving
+                  ? 'Saving...'
+                  : `Submit Attendance for ${selectedGrade} →`}
               </button>
             </div>
 
@@ -2240,56 +2325,76 @@ export default function App() {
             <div className="scout-card p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">2026-2027 Friday Sessions</h2>
-                  <p className="text-[11px] text-[#66736c]">Scouting Program: 6:30 PM – 9:00 PM</p>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">2026-2027 Program & Test Sessions</h2>
+                  <p className="text-[11px] text-[#66736c]">Fridays 6:30 PM – 9:00 PM • Future attendance locked until session date</p>
                 </div>
                 <span className="scout-pill-gold text-[11px] font-bold">
-                  25 Fridays
+                  {FRIDAY_SESSIONS.length} Sessions
                 </span>
               </div>
             </div>
 
             <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-              {FRIDAY_SESSIONS.map((session, idx) => (
-                <div
-                  key={idx}
-                  className={`scout-card p-3 flex items-center justify-between gap-2 ${
-                    session.date === selectedDate ? 'border-[#123c2d] ring-1 ring-[#123c2d]' : ''
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-[#17201c]">
-                        📅 {session.date}
-                      </span>
-                      {session.isProgram && (
-                        <span className="scout-pill text-[10px] px-1.5 py-0">🟢 Program</span>
-                      )}
-                      {session.isNoProgram && (
-                        <span className="scout-pill-alert text-[10px] px-1.5 py-0">🔴 No Session</span>
-                      )}
-                      {!session.isProgram && !session.isNoProgram && (
-                        <span className="scout-pill-gold text-[10px] px-1.5 py-0">🟡 Special</span>
+              {FRIDAY_SESSIONS.map((session, idx) => {
+                const isFuture = session.date > todayDateStr;
+                const isTestDay = session.date === '2026-09-25' || session.date === '2026-09-28';
+                const isSelected = session.date === selectedDate;
+
+                return (
+                  <div
+                    key={idx}
+                    className={`scout-card p-3 flex items-center justify-between gap-2 transition ${
+                      isSelected ? 'border-[#123c2d] ring-1 ring-[#123c2d] bg-[#fbf9f4]' : ''
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-[#17201c]">
+                          📅 {session.date}
+                        </span>
+                        {isTestDay ? (
+                          <span className="scout-pill text-[9.5px] px-1.5 py-0 bg-purple-100 text-purple-900 border border-purple-300 font-extrabold">
+                            🧪 Test Sandbox
+                          </span>
+                        ) : session.isProgram ? (
+                          isFuture ? (
+                            <span className="scout-pill text-[9.5px] px-1.5 py-0 bg-[#fffbeb] text-[#854d0e] border border-[#fef08a]">
+                              🔒 Future (Locked)
+                            </span>
+                          ) : (
+                            <span className="scout-pill text-[9.5px] px-1.5 py-0 bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              🟢 Active Program
+                            </span>
+                          )
+                        ) : session.isNoProgram ? (
+                          <span className="scout-pill-alert text-[9.5px] px-1.5 py-0">🔴 No Session</span>
+                        ) : (
+                          <span className="scout-pill-gold text-[9.5px] px-1.5 py-0">🟡 Special</span>
+                        )}
+                      </div>
+                      <div className="text-xs font-medium text-[#123c2d] mt-0.5">{session.event}</div>
+                      {session.notes && (
+                        <div className="text-[10px] text-[#8a6514] font-medium mt-0.5">{session.notes}</div>
                       )}
                     </div>
-                    <div className="text-xs font-medium text-[#123c2d] mt-0.5">{session.event}</div>
-                    {session.notes && (
-                      <div className="text-[10px] text-[#8a6514] font-medium mt-0.5">{session.notes}</div>
-                    )}
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedDate(session.date);
-                      setActiveTab('checkin');
-                    }}
-                    className="scout-btn-outline text-[11px] py-1 px-2.5 flex-shrink-0"
-                  >
-                    Take Attendance →
-                  </button>
-                </div>
-              ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDate(session.date);
+                        setActiveTab('checkin');
+                      }}
+                      className={`text-[11px] py-1.5 px-2.5 rounded-xl font-bold flex-shrink-0 cursor-pointer transition ${
+                        isFuture
+                          ? 'bg-[#ece9df] text-[#66736c] hover:bg-[#ded9cc] border border-[#ccc]'
+                          : 'scout-btn-primary'
+                      }`}
+                    >
+                      {isFuture ? '🔒 View Roster' : 'Take Attendance →'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </main>
         )}
