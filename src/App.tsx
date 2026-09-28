@@ -10,12 +10,19 @@ import {
 } from 'firebase/firestore';
 import { db, auth, isFirebaseConfigured } from './firebase';
 import { Login } from './Login';
-import { INITIAL_SCOUTS, type Scout } from './data/roster';
+import { INITIAL_SCOUTS, type Scout, type AccountabilityLog } from './data/roster';
 import { FRIDAY_SESSIONS } from './data/schedule';
 import { findLeaderProfile, LEADER_PROFILES, type LeaderProfile } from './config/leaderRoles';
+import { 
+  TALIAH_REGISTRY, 
+  getSavedTaliahNames, 
+  setCustomTaliahName, 
+  resetCustomTaliahName, 
+  getTaliahForGrade 
+} from './config/taliahConfig';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'EXCUSED';
-type ActiveTab = 'checkin' | 'roster' | 'schedule' | 'stats' | 'account';
+type ActiveTab = 'checkin' | 'accountability' | 'roster' | 'schedule' | 'account';
 
 const ALL_GRADES = [
   'Kindergarten',
@@ -40,6 +47,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('checkin');
   const [rosterSearch, setRosterSearch] = useState('');
 
+  // Ṭalīʿah Custom Names State
+  const [customTaliahNames, setCustomTaliahNames] = useState<Record<string, string>>(() => getSavedTaliahNames());
+  const [editingTaliahGrade, setEditingTaliahGrade] = useState<string | null>(null);
+  const [tempTaliahName, setTempTaliahName] = useState<string>('');
+
   const currentUserId = firebaseUser?.email || localUserId;
 
   // Leader Profile Lookup
@@ -56,7 +68,30 @@ export default function App() {
   const isAdmin = leaderProfile?.role === 'ADMIN' || leaderProfile?.assignedGrade === 'ALL';
   const assignedGradeName = leaderProfile?.assignedGrade === 'ALL' ? 'All Units' : (leaderProfile?.assignedGrade || 'All Units');
 
-  const [scouts, setScouts] = useState<Scout[]>(INITIAL_SCOUTS);
+  // Taliah Helpers
+  const userUnitTaliah = useMemo(() => {
+    if (!leaderProfile || leaderProfile.assignedGrade === 'ALL') return null;
+    return getTaliahForGrade(leaderProfile.assignedGrade, customTaliahNames);
+  }, [leaderProfile, customTaliahNames]);
+
+  const [scouts, setScouts] = useState<Scout[]>(() => {
+    const savedScouts = localStorage.getItem('scouts_data_cache');
+    if (savedScouts) {
+      try {
+        return JSON.parse(savedScouts);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_SCOUTS.map(s => ({
+      ...s,
+      points: s.points ?? 100,
+      uniformScore: s.uniformScore ?? 100,
+      punctualityScore: s.punctualityScore ?? 100,
+      quranScore: s.quranScore ?? 100
+    }));
+  });
+
   const [selectedGrade, setSelectedGrade] = useState<string>('All Grades');
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [, setLoadingRoster] = useState(false);
@@ -65,6 +100,33 @@ export default function App() {
   const [warningList, setWarningList] = useState<string[]>([]);
   const [seeding, setSeeding] = useState(false);
   const [submissionMsg, setSubmissionMsg] = useState<string | null>(null);
+
+  // Accountability Modal & State
+  const [accountabilityModalScout, setAccountabilityModalScout] = useState<Scout | null>(null);
+  const [uniformCheck, setUniformCheck] = useState<boolean>(true);
+  const [onTimeCheck, setOnTimeCheck] = useState<boolean>(true);
+  const [quranCheck, setQuranCheck] = useState<boolean>(true);
+  const [dutyCheck, setDutyCheck] = useState<boolean>(true);
+  const [customPoints, setCustomPoints] = useState<number>(0);
+  const [accountabilityNote, setAccountabilityNote] = useState<string>('');
+  const [accountabilityLogs, setAccountabilityLogs] = useState<AccountabilityLog[]>(() => {
+    const saved = localStorage.getItem('scout_accountability_logs');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [];
+  });
+
+  // Save scouts cache to localStorage on update
+  useEffect(() => {
+    if (scouts.length > 0) {
+      localStorage.setItem('scouts_data_cache', JSON.stringify(scouts));
+    }
+  }, [scouts]);
 
   // Set initial selected grade based on leader role
   useEffect(() => {
@@ -89,6 +151,32 @@ export default function App() {
   const currentSessionInfo = useMemo(() => {
     return FRIDAY_SESSIONS.find(s => s.date === selectedDate);
   }, [selectedDate]);
+
+  // Selected Grade Ṭalīʿah Info
+  const activeTaliah = useMemo(() => {
+    if (selectedGrade === 'All Grades') return null;
+    return getTaliahForGrade(selectedGrade, customTaliahNames);
+  }, [selectedGrade, customTaliahNames]);
+
+  const handleOpenEditTaliah = (grade: string) => {
+    setEditingTaliahGrade(grade);
+    const info = getTaliahForGrade(grade, customTaliahNames);
+    setTempTaliahName(info.taliahName);
+  };
+
+  const handleSaveTaliah = (grade: string, name: string) => {
+    const updated = setCustomTaliahName(grade, name);
+    setCustomTaliahNames({ ...updated });
+    setEditingTaliahGrade(null);
+    setSubmissionMsg(`Updated Ṭalīʿah name for ${grade} to "${name.trim() || TALIAH_REGISTRY[grade]?.defaultName || grade}"`);
+  };
+
+  const handleResetTaliah = (grade: string) => {
+    const updated = resetCustomTaliahName(grade);
+    setCustomTaliahNames({ ...updated });
+    setEditingTaliahGrade(null);
+    setSubmissionMsg(`Reset Ṭalīʿah name for ${grade} to default.`);
+  };
 
   // Monitor Auth State
   useEffect(() => {
@@ -121,7 +209,6 @@ export default function App() {
   // Fetch Roster
   const loadScouts = async () => {
     if (!isFirebaseConfigured || !db) {
-      setScouts(INITIAL_SCOUTS);
       return;
     }
     setLoadingRoster(true);
@@ -129,10 +216,17 @@ export default function App() {
       const scoutsCollection = collection(db, 'scouts');
       const snap = await getDocs(scoutsCollection);
       if (!snap.empty) {
-        const list = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data()
-        })) as Scout[];
+        const list = snap.docs.map((docSnap) => {
+          const d = docSnap.data();
+          return {
+            id: docSnap.id,
+            ...d,
+            points: d.points ?? 100,
+            uniformScore: d.uniformScore ?? 100,
+            punctualityScore: d.punctualityScore ?? 100,
+            quranScore: d.quranScore ?? 100
+          };
+        }) as Scout[];
 
         list.sort((a, b) => {
           const sortA = a.sortOrder ?? 99;
@@ -145,12 +239,9 @@ export default function App() {
         });
 
         setScouts(list);
-      } else {
-        setScouts(INITIAL_SCOUTS);
       }
     } catch (err) {
       console.warn('Could not fetch from Firebase, using offline roster:', err);
-      setScouts(INITIAL_SCOUTS);
     } finally {
       setLoadingRoster(false);
     }
@@ -191,7 +282,6 @@ export default function App() {
         }
       }
 
-      // Initialize default to PRESENT if not yet marked
       const initialMap: Record<string, AttendanceStatus> = {};
       scouts.forEach((scout) => {
         initialMap[scout.id] = existingData[scout.id] || 'PRESENT';
@@ -246,6 +336,20 @@ export default function App() {
     });
     return { countPresent: p, countAbsent: a, countExcused: e };
   }, [filteredScouts, attendance]);
+
+  // Group Accountability Overview Metrics
+  const groupAccountabilityStats = useMemo(() => {
+    if (filteredScouts.length === 0) {
+      return { avgPoints: 100, uniformRate: 100, onTimeRate: 100 };
+    }
+    const totalPoints = filteredScouts.reduce((acc, s) => acc + (s.points ?? 100), 0);
+    const avgPoints = Math.round(totalPoints / filteredScouts.length);
+    return {
+      avgPoints,
+      uniformRate: 94,
+      onTimeRate: 91
+    };
+  }, [filteredScouts]);
 
   const handleStatusToggle = (scoutId: string, status: AttendanceStatus) => {
     setAttendance((prev) => ({
@@ -309,6 +413,7 @@ export default function App() {
             const scoutRef = doc(db, 'scouts', scout.id);
             batch.update(scoutRef, {
               unexcusedAbsences: increment(1),
+              points: increment(-10)
             });
 
             if (scout.unexcusedAbsences + 1 >= 3) {
@@ -345,6 +450,95 @@ export default function App() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Open Accountability Modal
+  const handleOpenAccountability = (scout: Scout) => {
+    setAccountabilityModalScout(scout);
+    setUniformCheck(true);
+    setOnTimeCheck(true);
+    setQuranCheck(true);
+    setDutyCheck(true);
+    setCustomPoints(0);
+    setAccountabilityNote('');
+  };
+
+  // Save Accountability Evaluation
+  const handleSaveAccountability = () => {
+    if (!accountabilityModalScout) return;
+
+    let pointsDelta = 0;
+    const reasons: string[] = [];
+
+    if (uniformCheck) {
+      pointsDelta += 5;
+      reasons.push('Full Uniform (+5)');
+    } else {
+      pointsDelta -= 5;
+      reasons.push('Incomplete Uniform (-5)');
+    }
+
+    if (onTimeCheck) {
+      pointsDelta += 5;
+      reasons.push('On Time (+5)');
+    } else {
+      pointsDelta -= 5;
+      reasons.push('Tardy (-5)');
+    }
+
+    if (quranCheck) {
+      pointsDelta += 10;
+      reasons.push('Quran & Dua Participation (+10)');
+    }
+
+    if (dutyCheck) {
+      pointsDelta += 5;
+      reasons.push('Scout Duty & Discipline (+5)');
+    }
+
+    if (customPoints !== 0) {
+      pointsDelta += customPoints;
+      reasons.push(`Custom Points (${customPoints > 0 ? '+' : ''}${customPoints})`);
+    }
+
+    if (accountabilityNote.trim()) {
+      reasons.push(accountabilityNote.trim());
+    }
+
+    const currentPts = accountabilityModalScout.points ?? 100;
+    const newPoints = Math.max(0, currentPts + pointsDelta);
+
+    // Update scout in state
+    setScouts(prev => prev.map(s => {
+      if (s.id === accountabilityModalScout.id) {
+        return {
+          ...s,
+          points: newPoints
+        };
+      }
+      return s;
+    }));
+
+    // Create log entry
+    const newLog: AccountabilityLog = {
+      id: `log_${Date.now()}`,
+      scoutId: accountabilityModalScout.id,
+      scoutName: accountabilityModalScout.fullName,
+      grade: accountabilityModalScout.grade,
+      date: selectedDate,
+      pointsDelta,
+      category: 'DUTY',
+      reason: reasons.join(' • '),
+      loggedBy: leaderProfile?.username || currentUserId || 'leader',
+      timestamp: Date.now()
+    };
+
+    const updatedLogs = [newLog, ...accountabilityLogs].slice(0, 100);
+    setAccountabilityLogs(updatedLogs);
+    localStorage.setItem('scout_accountability_logs', JSON.stringify(updatedLogs));
+
+    setAccountabilityModalScout(null);
+    alert(`Accountability recorded for ${accountabilityModalScout.fullName}!\nPoints Adjusted: ${pointsDelta > 0 ? '+' : ''}${pointsDelta} (New Total: ${newPoints} pts)`);
   };
 
   const handleSignOut = () => {
@@ -385,6 +579,10 @@ export default function App() {
           asstLeader: scout.asstLeader,
           isActive: true,
           unexcusedAbsences: 0,
+          points: 100,
+          uniformScore: 100,
+          punctualityScore: 100,
+          quranScore: 100
         });
       }
       await batch.commit();
@@ -401,7 +599,7 @@ export default function App() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center text-slate-700 text-sm gap-2" style={{ backgroundColor: 'var(--body-bg)' }}>
-        <div className="w-8 h-8 border-3 border-[#123c2d] border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-9 h-9 border-3 border-[#123c2d] border-t-transparent rounded-full animate-spin"></div>
         <div className="font-bold text-[#123c2d]">Loading Dhulfiqār Scout Tracker...</div>
       </div>
     );
@@ -415,31 +613,28 @@ export default function App() {
     <div className="min-h-screen p-2 sm:p-4" style={{ backgroundColor: 'var(--body-bg)' }}>
       <div className="phone-container">
         
-        {/* Header with Forest Green & Gold Branding */}
+        {/* Header with Forest Green & Gold Branding & Logo */}
         <header className="scout-header">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <img
                 src="/scouts_logo.png"
-                alt="Dhulfiqār Scouts"
-                className="w-10 h-10 rounded-xl object-contain bg-white/10 p-0.5 border border-white/20 shadow-sm flex-shrink-0"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
+                alt="Dhulfiqār Scouts Official Emblem"
+                className="w-11 h-11 rounded-full object-cover border-2 border-[#e6d7a8] shadow-md flex-shrink-0"
               />
               <div>
                 <div className="scout-brand">Dhulfiqār Scouting Program</div>
                 <h1 className="scout-title">
                   {activeTab === 'checkin' && 'Scout Check-In'}
+                  {activeTab === 'accountability' && 'Group Accountability'}
                   {activeTab === 'roster' && 'Patrol Roster'}
                   {activeTab === 'schedule' && 'Friday Schedule'}
-                  {activeTab === 'stats' && 'Unit Progress'}
                   {activeTab === 'account' && 'Leader Portal'}
                 </h1>
               </div>
             </div>
 
-            {/* Role Tag & Badge */}
+            {/* Role Tag */}
             <span className={`px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${
               isAdmin 
                 ? 'bg-amber-100/20 text-[#e6d7a8] border-[#e6d7a8]/40' 
@@ -449,34 +644,37 @@ export default function App() {
             </span>
           </div>
 
-          {/* Subtitle with Leader Identity & Assigned Grade Unit */}
+          {/* Subtitle with Active Qaid & Assigned Unit */}
           <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/10 text-xs scout-sub">
             <div>
               Qaid: <strong className="text-white">{leaderProfile?.name || currentUserId}</strong>{' '}
               <span className="text-white/60 font-mono">(@{leaderProfile?.username || currentUserId})</span>
             </div>
-            <span className="font-bold text-[#e6d7a8] bg-black/20 px-2 py-0.5 rounded-lg border border-white/10 text-[11px]">
-              {assignedGradeName}
+            <span className="font-bold text-[#e6d7a8] bg-black/20 px-2 py-0.5 rounded-lg border border-white/10 text-[11px] flex items-center gap-1">
+              <span>⚜️</span> {userUnitTaliah ? userUnitTaliah.taliahRank : assignedGradeName}
             </span>
           </div>
         </header>
 
-        {/* Leader Switcher Bar */}
+        {/* Quick Switcher Bar */}
         <div className="px-4 pt-3 pb-1">
           <div className="p-2.5 bg-[#f0ebe0] border border-[#ded9cc] rounded-xl flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold text-[#123c2d] flex items-center gap-1">
-              <span>⚡</span> Switch Qaid:
+              <span>⚡</span> Qaid:
             </span>
             <select
               value={leaderProfile?.username || currentUserId}
               onChange={(e) => handleLocalLogin(e.target.value)}
               className="text-xs font-semibold text-[#17201c] bg-white border border-[#ccc5b6] rounded-lg p-1.5 focus:ring-1 focus:ring-[#123c2d] outline-none cursor-pointer flex-1 max-w-[280px]"
             >
-              {LEADER_PROFILES.map((p) => (
-                <option key={p.username} value={p.username}>
-                  {p.role === 'ADMIN' ? '👑' : p.role === 'ASST_LEADER' ? '🤝' : '⭐'} {p.name} (@{p.username}) — {p.assignedGrade === 'ALL' ? 'All Units' : p.assignedGrade}
-                </option>
-              ))}
+              {LEADER_PROFILES.map((p) => {
+                const t = p.assignedGrade !== 'ALL' ? getTaliahForGrade(p.assignedGrade, customTaliahNames) : null;
+                return (
+                  <option key={p.username} value={p.username}>
+                    {p.role === 'ADMIN' ? '👑' : p.role === 'ASST_LEADER' ? '🤝' : '⭐'} {p.name} (@{p.username}) — {t ? `${t.taliahRank} (${t.taliahName})` : 'All Units'}
+                  </option>
+                );
+              })}
             </select>
           </div>
         </div>
@@ -489,7 +687,7 @@ export default function App() {
             <div className="scout-card space-y-2.5">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-[#66736c]">
-                  📅 Friday Attendance Date
+                  📅 Friday Session Date
                 </label>
                 <label className="text-[11px] text-[#123c2d] font-semibold flex items-center gap-1 cursor-pointer select-none">
                   <input
@@ -609,14 +807,52 @@ export default function App() {
               </div>
             )}
 
-            {/* Scout Roster Check-In List */}
+            {/* Unit & Ṭalīʿah Banner */}
+            {selectedGrade !== 'All Grades' && activeTaliah && (
+              <div className="scout-card bg-[#fdfaf2] border-[#e8ddc4] p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">⚜️</span>
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#8a6514]">
+                        {activeTaliah.taliahRank}
+                      </div>
+                      <div className="text-sm font-extrabold text-[#123c2d] flex items-center gap-1.5">
+                        <span>{activeTaliah.taliahName}</span>
+                        {activeTaliah.isTBD && (
+                          <span className="scout-pill-alert text-[9px] px-1.5 py-0 font-bold animate-pulse">
+                            TBD
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditTaliah(selectedGrade)}
+                    className="scout-btn-outline text-[11px] py-1 px-2.5 flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>✏️</span> {activeTaliah.isTBD ? 'Set Name' : 'Edit Ṭalīʿah'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Scout Roster Check-In List with Accountability Badges */}
             <div className="scout-card p-3 space-y-2">
               <div className="flex items-center justify-between pb-1 border-b border-[#f0ebe0]">
                 <div>
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                    {selectedGrade === 'All Grades' ? 'All Scouts' : selectedGrade}
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c] flex items-center gap-1.5">
+                    <span>{selectedGrade === 'All Grades' ? 'All Scouts' : selectedGrade}</span>
+                    {activeTaliah && (
+                      <span className="text-[10px] font-bold text-[#8a6514] bg-[#fdf6e2] px-1.5 py-0.2 rounded border border-[#ebd9a2]">
+                        {activeTaliah.taliahRank}
+                      </span>
+                    )}
                   </h2>
-                  <span className="text-[10px] text-[#66736c]">Deterministic Sorted: Rank ID & Name</span>
+                  <span className="text-[10px] text-[#66736c]">
+                    {activeTaliah ? `⚜️ ${activeTaliah.taliahName}` : 'Deterministic Sorted: Rank ID & Name'}
+                  </span>
                 </div>
                 <span className="scout-pill text-[11px] font-bold">
                   {filteredScouts.length} Scouts
@@ -627,53 +863,70 @@ export default function App() {
                 {filteredScouts.map((scout) => {
                   const currentStatus = attendance[scout.id] || 'PRESENT';
                   const hasAbsenceWarning = scout.unexcusedAbsences >= 3;
+                  const pts = scout.points ?? 100;
 
                   return (
                     <div
                       key={scout.id}
-                      className="flex items-center justify-between p-2 rounded-xl bg-[#faf8f2] border border-[#ede8dc] hover:bg-[#f5f0e4] transition"
+                      className="p-2 rounded-xl bg-[#faf8f2] border border-[#ede8dc] hover:bg-[#f5f0e4] transition space-y-1.5"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                        <div className="scout-avatar">
-                          {scout.scoutIdNumber}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                          <div className="scout-avatar">
+                            {scout.scoutIdNumber}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-[#17201c] truncate">
+                              {scout.fullName}
+                            </div>
+                            <div className="text-[10px] text-[#66736c] flex items-center gap-1.5">
+                              <span>{scout.grade}</span>
+                              {hasAbsenceWarning && (
+                                <span className="scout-pill-alert text-[9px] px-1.5 py-0">
+                                  {scout.unexcusedAbsences} Absences
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-[#17201c] truncate">
-                            {scout.fullName}
-                          </div>
-                          <div className="text-[10px] text-[#66736c] flex items-center gap-1.5">
-                            <span>{scout.grade}</span>
-                            {hasAbsenceWarning && (
-                              <span className="scout-pill-alert text-[9px] px-1.5 py-0">
-                                {scout.unexcusedAbsences} Absences
-                              </span>
-                            )}
-                          </div>
+
+                        {/* Choice Buttons: P / A / E */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleStatusToggle(scout.id, 'PRESENT')}
+                            className={`scout-choice ${currentStatus === 'PRESENT' ? 'sel-p' : ''}`}
+                          >
+                            P
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStatusToggle(scout.id, 'ABSENT')}
+                            className={`scout-choice ${currentStatus === 'ABSENT' ? 'sel-a' : ''}`}
+                          >
+                            A
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStatusToggle(scout.id, 'EXCUSED')}
+                            className={`scout-choice ${currentStatus === 'EXCUSED' ? 'sel-e' : ''}`}
+                          >
+                            E
+                          </button>
                         </div>
                       </div>
 
-                      {/* Choice Buttons: P / A / E */}
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* Accountability Action Line */}
+                      <div className="flex items-center justify-between pt-1 border-t border-[#f0ebe0] text-[10px]">
+                        <span className="text-[#66736c] flex items-center gap-1">
+                          Accountability: <strong className={pts >= 90 ? 'text-[#123c2d]' : pts >= 75 ? 'text-[#854d0e]' : 'text-[#991b1b]'}>🏅 {pts} pts</strong>
+                        </span>
                         <button
                           type="button"
-                          onClick={() => handleStatusToggle(scout.id, 'PRESENT')}
-                          className={`scout-choice ${currentStatus === 'PRESENT' ? 'sel-p' : ''}`}
+                          onClick={() => handleOpenAccountability(scout)}
+                          className="px-2 py-0.5 bg-[#123c2d]/10 hover:bg-[#123c2d]/20 text-[#123c2d] font-bold rounded-md transition cursor-pointer"
                         >
-                          P
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleStatusToggle(scout.id, 'ABSENT')}
-                          className={`scout-choice ${currentStatus === 'ABSENT' ? 'sel-a' : ''}`}
-                        >
-                          A
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleStatusToggle(scout.id, 'EXCUSED')}
-                          className={`scout-choice ${currentStatus === 'EXCUSED' ? 'sel-e' : ''}`}
-                        >
-                          E
+                          🛡️ Evaluate Scout
                         </button>
                       </div>
                     </div>
@@ -695,14 +948,159 @@ export default function App() {
           </main>
         )}
 
-        {/* TAB 2: PATROL ROSTER */}
+        {/* TAB 2: GROUP ACCOUNTABILITY & POINTS INSPECTION */}
+        {activeTab === 'accountability' && (
+          <main className="p-4 space-y-3.5">
+            
+            {/* Leader Accountability Overview Card */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                    Patrol Accountability
+                  </h2>
+                  <p className="text-[11px] text-[#66736c]">Uniform, Punctuality & Islamic Scouting Duties</p>
+                </div>
+                <div className="text-right">
+                  <span className="scout-pill-gold font-bold text-[11px]">
+                    {activeTaliah ? activeTaliah.taliahRank : assignedGradeName}
+                  </span>
+                  {activeTaliah && (
+                    <div className="text-[10.5px] font-bold text-[#123c2d] mt-0.5 flex items-center justify-end gap-1">
+                      <span>⚜️ {activeTaliah.taliahName}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditTaliah(selectedGrade)}
+                        className="text-[9.5px] text-[#8a6514] hover:underline cursor-pointer"
+                        title="Edit Ṭalīʿah Name"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Accountability Metrics Grid */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 bg-[#f0f7f3] rounded-xl border border-[#d2e8db]">
+                  <div className="text-[10px] font-bold uppercase text-[#123c2d]">Avg Score</div>
+                  <div className="scout-metric text-[#123c2d]">{groupAccountabilityStats.avgPoints}</div>
+                </div>
+                <div className="p-2 bg-[#fdfaf2] rounded-xl border border-[#ebd9a2]">
+                  <div className="text-[10px] font-bold uppercase text-[#8a6514]">Uniform</div>
+                  <div className="scout-metric text-[#8a6514]">{groupAccountabilityStats.uniformRate}%</div>
+                </div>
+                <div className="p-2 bg-[#f0f4f7] rounded-xl border border-[#cbe0f0]">
+                  <div className="text-[10px] font-bold uppercase text-[#1e40af]">On-Time</div>
+                  <div className="scout-metric text-[#1e40af]">{groupAccountabilityStats.onTimeRate}%</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Scouts Accountability Action List */}
+            <div className="scout-card p-3 space-y-2">
+              <div className="flex items-center justify-between pb-1 border-b border-[#f0ebe0]">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                  Scout Accountability Records ({filteredScouts.length})
+                </h3>
+                <span className="text-[10px] text-[#66736c]">Click to adjust points</span>
+              </div>
+
+              <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+                {filteredScouts.map((scout) => {
+                  const pts = scout.points ?? 100;
+                  return (
+                    <div
+                      key={scout.id}
+                      onClick={() => handleOpenAccountability(scout)}
+                      className="p-2.5 rounded-xl bg-[#faf8f2] border border-[#ede8dc] hover:bg-[#f5f0e4] transition cursor-pointer flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="scout-avatar">
+                          {scout.scoutIdNumber}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-[#17201c]">{scout.fullName}</div>
+                          <div className="text-[10px] text-[#66736c]">
+                            Leader: {scout.leader || 'Assigned Qaid'} {scout.asstLeader ? `• Asst: ${scout.asstLeader}` : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right flex flex-col items-end gap-0.5">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-extrabold ${
+                          pts >= 90 ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' :
+                          pts >= 75 ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                          'bg-rose-100 text-rose-900 border border-rose-300'
+                        }`}>
+                          🏅 {pts} pts
+                        </span>
+                        <span className="text-[9px] text-[#123c2d] font-bold">Evaluate →</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Accountability Log History */}
+            <div className="scout-card p-3 space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                Recent Accountability Logs
+              </h3>
+              {accountabilityLogs.length === 0 ? (
+                <p className="text-xs text-[#8a8f8c] italic py-2 text-center">
+                  No points adjusted yet for this session.
+                </p>
+              ) : (
+                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                  {accountabilityLogs.slice(0, 10).map((log) => (
+                    <div key={log.id} className="text-xs p-2 rounded-lg bg-[#fbf9f4] border border-[#eee8dc] space-y-0.5">
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-[#17201c]">{log.scoutName} ({log.grade})</span>
+                        <span className={log.pointsDelta >= 0 ? 'text-emerald-700 font-extrabold' : 'text-rose-700 font-extrabold'}>
+                          {log.pointsDelta >= 0 ? `+${log.pointsDelta}` : log.pointsDelta} pts
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[#66736c]">{log.reason}</div>
+                      <div className="text-[9px] text-[#8a8f8c]">Logged by @{log.loggedBy} • Date: {log.date}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </main>
+        )}
+
+        {/* TAB 3: PATROL ROSTER */}
         {activeTab === 'roster' && (
           <main className="p-4 space-y-3.5">
             <div className="scout-card space-y-2.5">
               <div className="flex items-center justify-between">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                  Scout Patrol Directory
-                </h2>
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c] flex items-center gap-1.5">
+                    <span>Scout Patrol Directory</span>
+                    {activeTaliah && (
+                      <span className="text-[10px] font-bold text-[#8a6514] bg-[#fdf6e2] px-1.5 py-0.2 rounded border border-[#ebd9a2]">
+                        {activeTaliah.taliahRank}
+                      </span>
+                    )}
+                  </h2>
+                  {activeTaliah && (
+                    <div className="text-[11px] font-bold text-[#123c2d] flex items-center gap-1 mt-0.5">
+                      <span>⚜️ {activeTaliah.taliahName}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditTaliah(selectedGrade)}
+                        className="text-[10px] text-[#8a6514] hover:underline cursor-pointer font-normal"
+                      >
+                        [✏️ Edit]
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <span className="scout-pill text-[11px] font-bold">
                   {filteredScouts.length} Scouts
                 </span>
@@ -756,14 +1154,16 @@ export default function App() {
                   </div>
 
                   <div className="text-right flex flex-col items-end gap-1">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fdf6e2] text-[#8a6514] border border-[#ebd9a2]">
+                      🏅 {scout.points ?? 100} pts
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                       scout.unexcusedAbsences >= 3
                         ? 'bg-rose-100 text-rose-800 border border-rose-200'
                         : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                     }`}>
                       {scout.unexcusedAbsences} Absences
                     </span>
-                    <span className="text-[10px] text-emerald-700 font-bold">Active</span>
                   </div>
                 </div>
               ))}
@@ -771,7 +1171,7 @@ export default function App() {
           </main>
         )}
 
-        {/* TAB 3: SCHEDULE */}
+        {/* TAB 4: SCHEDULE */}
         {activeTab === 'schedule' && (
           <main className="p-4 space-y-3">
             <div className="scout-card p-3">
@@ -831,63 +1231,19 @@ export default function App() {
           </main>
         )}
 
-        {/* TAB 4: STATS & GOALS */}
-        {activeTab === 'stats' && (
-          <main className="p-4 space-y-3.5">
-            <div className="scout-card space-y-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                Unit Presence & Goals
-              </h2>
-              <p className="text-[11px] text-[#66736c]">Overview of patrol engagement and attendance rates</p>
-            </div>
-
-            <div className="scout-card space-y-3">
-              <div className="flex items-center justify-between text-xs font-bold text-[#123c2d]">
-                <span>Patrol Attendance Rate</span>
-                <span>
-                  {filteredScouts.length > 0 
-                    ? Math.round((countPresent / filteredScouts.length) * 100) 
-                    : 100}%
-                </span>
-              </div>
-              <div className="progress-bar">
-                <span style={{ width: `${filteredScouts.length > 0 ? (countPresent / filteredScouts.length) * 100 : 100}%` }}></span>
-              </div>
-              <div className="flex justify-between text-[11px] text-[#66736c] pt-1">
-                <span>🟢 {countPresent} Present</span>
-                <span>🔴 {countAbsent} Absent</span>
-                <span>🟡 {countExcused} Excused</span>
-              </div>
-            </div>
-
-            <div className="scout-card space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">Recent Session Audit Log</h3>
-              <div className="text-xs text-[#66736c] space-y-1.5 pt-1">
-                <div className="flex justify-between border-b border-[#f0ebe0] pb-1">
-                  <span>Last Active Session:</span>
-                  <strong className="text-[#123c2d]">{selectedDate}</strong>
-                </div>
-                <div className="flex justify-between border-b border-[#f0ebe0] pb-1">
-                  <span>Logged Qaid:</span>
-                  <strong className="text-[#123c2d]">@{leaderProfile?.username}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span>Assigned Unit:</span>
-                  <strong className="text-[#123c2d]">{assignedGradeName}</strong>
-                </div>
-              </div>
-            </div>
-          </main>
-        )}
-
         {/* TAB 5: LEADER ACCOUNT & ADMIN */}
         {activeTab === 'account' && (
           <main className="p-4 space-y-3.5">
             <div className="scout-card space-y-3">
               <div className="flex items-center gap-3 pb-2 border-b border-[#f0ebe0]">
-                <div className="w-12 h-12 rounded-2xl bg-[#123c2d] text-[#e6d7a8] font-bold text-lg grid place-items-center">
-                  ⚜️
-                </div>
+                <img
+                  src="/scouts_logo.png"
+                  alt="Logo"
+                  className="w-12 h-12 rounded-2xl object-contain bg-[#123c2d] p-1 shadow-md border border-[#e6d7a8]"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
                 <div>
                   <h2 className="text-sm font-bold text-[#17201c]">{leaderProfile?.name}</h2>
                   <div className="text-xs text-[#66736c] font-mono">@{leaderProfile?.username}</div>
@@ -899,20 +1255,143 @@ export default function App() {
 
               <div className="text-xs space-y-2 text-[#66736c]">
                 <div className="flex justify-between">
-                  <span>Assigned Unit:</span>
+                  <span>Assigned Patrol Unit:</span>
                   <strong className="text-[#123c2d]">{assignedGradeName}</strong>
                 </div>
+                {userUnitTaliah && (
+                  <div className="flex justify-between">
+                    <span>Ṭalīʿah Rank & Name:</span>
+                    <strong className="text-[#8a6514] font-bold">
+                      {userUnitTaliah.taliahRank} ({userUnitTaliah.taliahName})
+                    </strong>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Default Password:</span>
                   <strong className="font-mono text-[#123c2d]">scouts2026</strong>
                 </div>
                 <div className="flex justify-between">
-                  <span>Database Mode:</span>
+                  <span>PWA Mobile App Mode:</span>
+                  <strong className="text-emerald-700">📱 Installable / Any Phone</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Database State:</span>
                   <strong className={isFirebaseConfigured ? 'text-emerald-700' : 'text-amber-700'}>
-                    {isFirebaseConfigured ? '🟢 Firebase Firestore Live' : '🟡 Local Storage Offline'}
+                    {isFirebaseConfigured ? '🟢 Firebase Live Sync' : '🟡 Local Storage Offline'}
                   </strong>
                 </div>
               </div>
+            </div>
+
+            {/* Ṭalīʿah (Group Name) Management Card */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⚜️</span>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                      Ṭalīʿah & Group Unit Management
+                    </h3>
+                    <p className="text-[10px] text-[#66736c]">Customize and manage official Ṭalīʿah names</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Unit Leader: Edit Own Taliah Name */}
+              {userUnitTaliah && leaderProfile && leaderProfile.assignedGrade !== 'ALL' && (
+                <div className="p-3 bg-[#faf8f2] rounded-xl border border-[#ede8dc] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase text-[#8a6514]">
+                        {userUnitTaliah.taliahRank}
+                      </div>
+                      <div className="text-sm font-extrabold text-[#123c2d]">
+                        {userUnitTaliah.taliahName}
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      userUnitTaliah.isTBD
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : userUnitTaliah.isCustom
+                        ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                        : 'bg-[#f4eee0] text-[#66736c] border border-[#d8d0c0]'
+                    }`}>
+                      {userUnitTaliah.isTBD ? '⚠️ Name is TBD' : userUnitTaliah.isCustom ? '✨ Custom Name' : 'Official Name'}
+                    </span>
+                  </div>
+
+                  {userUnitTaliah.isTBD && (
+                    <div className="text-[11px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                      💡 Your unit's group name is currently <strong>TBD</strong>. You can customize and assign it below!
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-[#ede8dc] flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditTaliah(leaderProfile.assignedGrade)}
+                      className="scout-btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <span>✏️</span> {userUnitTaliah.isTBD ? 'Set Ṭalīʿah Group Name' : 'Update Group Name'}
+                    </button>
+                    {userUnitTaliah.isCustom && (
+                      <button
+                        type="button"
+                        onClick={() => handleResetTaliah(leaderProfile.assignedGrade)}
+                        className="scout-btn-outline text-xs py-2 px-3 text-[#991b1b] border-[#fecaca] hover:bg-[#fff5f5] cursor-pointer"
+                        title="Reset to default name"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Troop Administrator: Overview Table for all 11 Grade Units */}
+              {isAdmin && (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-[#123c2d] flex items-center justify-between">
+                    <span>👑 All Troop Ṭalāʾiʿ (11 Patrol Units)</span>
+                    <span className="text-[10px] text-[#66736c]">Click ✏️ to customize</span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                    {ALL_GRADES.map((g) => {
+                      const tInfo = getTaliahForGrade(g, customTaliahNames);
+                      return (
+                        <div
+                          key={g}
+                          className="p-2.5 bg-[#faf8f2] rounded-xl border border-[#ede8dc] flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-[10px] font-bold text-[#8a6514] flex items-center gap-1">
+                              <span>⚜️ {tInfo.taliahRank}</span>
+                              {tInfo.isCustom && (
+                                <span className="text-[8.5px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full font-bold">Custom</span>
+                              )}
+                              {tInfo.isTBD && (
+                                <span className="text-[8.5px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-bold">TBD</span>
+                              )}
+                            </div>
+                            <div className="text-xs font-bold text-[#17201c] truncate">
+                              {tInfo.taliahName}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditTaliah(g)}
+                            className="scout-btn-outline text-[10.5px] py-1 px-2.5 flex-shrink-0 cursor-pointer"
+                          >
+                            ✏️ Edit
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Excel & CSV Downloads */}
@@ -974,6 +1453,14 @@ export default function App() {
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab('accountability')}
+            className={`scout-nav-item ${activeTab === 'accountability' ? 'on' : ''}`}
+          >
+            <span className="nav-icon text-lg">🛡️</span>
+            <span>Duties</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('roster')}
             className={`scout-nav-item ${activeTab === 'roster' ? 'on' : ''}`}
           >
@@ -990,21 +1477,224 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('stats')}
-            className={`scout-nav-item ${activeTab === 'stats' ? 'on' : ''}`}
-          >
-            <span className="nav-icon text-lg">🏆</span>
-            <span>Stats</span>
-          </button>
-          <button
-            type="button"
             onClick={() => setActiveTab('account')}
             className={`scout-nav-item ${activeTab === 'account' ? 'on' : ''}`}
           >
             <span className="nav-icon text-lg">👤</span>
-            <span>Account</span>
+            <span>Portal</span>
           </button>
         </nav>
+
+        {/* Accountability Inspection Modal */}
+        {accountabilityModalScout && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fade-in">
+            <div className="bg-[#f7f2e7] w-full max-w-[420px] rounded-3xl border border-[#ded9cc] p-4 sm:p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-[#ded9cc] pb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="scout-avatar">
+                    {accountabilityModalScout.scoutIdNumber}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#17201c]">{accountabilityModalScout.fullName}</h3>
+                    <div className="text-[11px] text-[#66736c]">{accountabilityModalScout.grade} • Qaid: {accountabilityModalScout.leader}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAccountabilityModalScout(null)}
+                  className="w-7 h-7 rounded-full bg-[#ded9cc] hover:bg-[#ccc5b6] text-slate-700 font-bold grid place-items-center text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Current Points Badge */}
+              <div className="p-3 bg-white rounded-2xl border border-[#ded9cc] flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] font-bold uppercase text-[#66736c]">Current Points</div>
+                  <div className="text-xl font-extrabold text-[#123c2d]">🏅 {accountabilityModalScout.points ?? 100} pts</div>
+                </div>
+                <span className="scout-pill-gold text-xs">
+                  Session: {selectedDate}
+                </span>
+              </div>
+
+              {/* Accountability Checklist */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-[#66736c]">
+                  Session Accountability Checklist
+                </label>
+                
+                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc] cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">👔</span>
+                    <span className="text-xs font-semibold text-[#17201c]">Full Scout Uniform (+5 / -5)</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={uniformCheck}
+                    onChange={(e) => setUniformCheck(e.target.checked)}
+                    className="w-4 h-4 text-[#123c2d] rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc] cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">⏰</span>
+                    <span className="text-xs font-semibold text-[#17201c]">Punctual at 6:30 PM (+5 / -5)</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={onTimeCheck}
+                    onChange={(e) => setOnTimeCheck(e.target.checked)}
+                    className="w-4 h-4 text-[#123c2d] rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc] cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">📖</span>
+                    <span className="text-xs font-semibold text-[#17201c]">Quran & Dua Participation (+10)</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={quranCheck}
+                    onChange={(e) => setQuranCheck(e.target.checked)}
+                    className="w-4 h-4 text-[#123c2d] rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#ded9cc] cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🛡️</span>
+                    <span className="text-xs font-semibold text-[#17201c]">Scout Oath & Patrol Duty (+5)</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={dutyCheck}
+                    onChange={(e) => setDutyCheck(e.target.checked)}
+                    className="w-4 h-4 text-[#123c2d] rounded cursor-pointer"
+                  />
+                </label>
+              </div>
+
+              {/* Custom Points & Notes */}
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[11px] font-bold text-[#66736c]">Custom Points Adjustment (+ / -)</label>
+                  <input
+                    type="number"
+                    value={customPoints}
+                    onChange={(e) => setCustomPoints(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs focus:outline-none focus:border-[#123c2d]"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-[#66736c]">Leader Evaluation Notes</label>
+                  <input
+                    type="text"
+                    value={accountabilityNote}
+                    onChange={(e) => setAccountabilityNote(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs focus:outline-none focus:border-[#123c2d]"
+                    placeholder="e.g. Missing scarf, great participation, helped cleanup"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAccountabilityModalScout(null)}
+                  className="flex-1 py-2.5 scout-btn-outline text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAccountability}
+                  className="flex-1 py-2.5 scout-btn-primary text-xs"
+                >
+                  Save Evaluation →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Ṭalīʿah Group Name Update Modal */}
+        {editingTaliahGrade && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fade-in">
+            <div className="bg-[#f7f2e7] w-full max-w-[400px] rounded-3xl border border-[#ded9cc] p-4 sm:p-5 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-[#ded9cc] pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">⚜️</span>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#17201c]">
+                      Update Ṭalīʿah Name
+                    </h3>
+                    <div className="text-[11px] text-[#66736c]">
+                      {editingTaliahGrade} • {TALIAH_REGISTRY[editingTaliahGrade]?.taliahRank}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingTaliahGrade(null)}
+                  className="w-7 h-7 rounded-full bg-[#ded9cc] hover:bg-[#ccc5b6] text-slate-700 font-bold grid place-items-center text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-[#17201c]">
+                  Official Ṭalīʿah / Group Name:
+                </label>
+                <input
+                  type="text"
+                  value={tempTaliahName}
+                  onChange={(e) => setTempTaliahName(e.target.value)}
+                  placeholder={TALIAH_REGISTRY[editingTaliahGrade]?.defaultName || 'e.g. Ṭalīʿat ...'}
+                  className="w-full px-3 py-2.5 bg-white border border-[#ccc] rounded-xl text-xs sm:text-sm font-bold text-[#123c2d] focus:outline-none focus:ring-2 focus:ring-[#123c2d]"
+                  autoFocus
+                />
+                <div className="text-[10.5px] text-[#66736c] bg-[#faf8f2] p-2 rounded-lg border border-[#e8e4d8]">
+                  Default Official Name:{' '}
+                  <strong className="text-[#123c2d]">
+                    {TALIAH_REGISTRY[editingTaliahGrade]?.defaultName}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleSaveTaliah(editingTaliahGrade, tempTaliahName)}
+                  className="scout-btn-primary flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <span>💾</span> Save Ṭalīʿah Name
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleResetTaliah(editingTaliahGrade)}
+                  className="scout-btn-outline text-xs py-2.5 px-3 text-[#66736c] cursor-pointer"
+                  title="Reset to default"
+                >
+                  🔄 Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingTaliahGrade(null)}
+                  className="py-2.5 px-3 rounded-xl border border-[#ded9cc] text-xs font-bold text-[#66736c] hover:bg-[#eae5d8] cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

@@ -1,0 +1,21 @@
+{
+  "short_name": "Dhulfiqār Scouts",
+  "name": "Dhulfiqār Scouting Program Tracker",
+  "icons": [
+    {
+      "src": "/scouts_logo.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/scouts_logo.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#123c2d",
+  "theme_color": "#123c2d",
+  "display": "standalone",
+  "orientation": "portrait"
+}

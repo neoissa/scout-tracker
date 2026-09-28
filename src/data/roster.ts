@@ -10,6 +10,23 @@ export interface Scout {
   asstLeader: string;
   isActive: boolean;
   unexcusedAbsences: number;
+  points?: number;
+  uniformScore?: number;
+  quranScore?: number;
+  punctualityScore?: number;
+}
+
+export interface AccountabilityLog {
+  id: string;
+  scoutId: string;
+  scoutName: string;
+  grade: string;
+  date: string;
+  pointsDelta: number;
+  category: 'UNIFORM' | 'PUNCTUALITY' | 'QURAN' | 'DUTY' | 'DISCIPLINE' | 'ATTENDANCE' | 'BONUS';
+  reason: string;
+  loggedBy: string;
+  timestamp: number;
 }
 
 export interface GradeInfo {
