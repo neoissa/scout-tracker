@@ -10,7 +10,7 @@ import {
   query, 
   where
 } from 'firebase/firestore';
-import { db, auth } from './firebase';
+import { db, auth, isFirebaseConfigured } from './firebase';
 import { Login } from './Login';
 import { INITIAL_SCOUTS, type Scout } from './data/roster';
 import { FRIDAY_SESSIONS } from './data/schedule';
@@ -34,10 +34,13 @@ const GRADES = [
 ];
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [localUserEmail, setLocalUserEmail] = useState<string | null>(() => {
+    return localStorage.getItem('scout_tracker_local_user');
+  });
   const [authLoading, setAuthLoading] = useState(true);
 
-  const [scouts, setScouts] = useState<Scout[]>([]);
+  const [scouts, setScouts] = useState<Scout[]>(INITIAL_SCOUTS);
   const [selectedGrade, setSelectedGrade] = useState<string>('All Grades');
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [loadingRoster, setLoadingRoster] = useState(false);
@@ -59,75 +62,118 @@ export default function App() {
     return FRIDAY_SESSIONS.find(s => s.date === selectedDate);
   }, [selectedDate]);
 
+  const currentUserEmail = firebaseUser?.email || localUserEmail;
+
   // Monitor Auth State
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    if (!isFirebaseConfigured || !auth) {
       setAuthLoading(false);
-      if (currentUser) {
+      return;
+    }
+
+    let unsubscribed = false;
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (unsubscribed) return;
+      setFirebaseUser(user);
+      setAuthLoading(false);
+      if (user) {
         loadScouts();
       }
     });
-    return () => unsubscribe();
+
+    // Fallback safety timeout so it never hangs
+    const timer = setTimeout(() => {
+      setAuthLoading(false);
+    }, 1500);
+
+    return () => {
+      unsubscribed = true;
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, []);
 
-  // Fetch Roster
+  // Fetch Roster (from Firebase if configured, otherwise INITIAL_SCOUTS)
   const loadScouts = async () => {
+    if (!isFirebaseConfigured || !db) {
+      setScouts(INITIAL_SCOUTS);
+      return;
+    }
+
     setLoadingRoster(true);
     try {
       const q = query(collection(db, 'scouts'), where('isActive', '==', true));
       const snap = await getDocs(q);
       
-      const list: Scout[] = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          fullName: data.fullName || `${data.firstName || ''} ${data.lastName || ''}`.trim(),
-          firstName: data.firstName || '',
-          lastName: data.lastName || '',
-          grade: data.grade || 'Unassigned',
-          leader: data.leader || '',
-          asstLeader: data.asstLeader || '',
-          isActive: data.isActive ?? true,
-          unexcusedAbsences: data.unexcusedAbsences || 0,
-        };
-      });
+      if (snap.empty) {
+        // If Firestore is empty, use initial scouts
+        setScouts(INITIAL_SCOUTS);
+      } else {
+        const list: Scout[] = snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            fullName: data.fullName || `${data.firstName || ''} ${data.lastName || ''}`.trim(),
+            firstName: data.firstName || '',
+            lastName: data.lastName || '',
+            grade: data.grade || 'Unassigned',
+            leader: data.leader || '',
+            asstLeader: data.asstLeader || '',
+            isActive: data.isActive ?? true,
+            unexcusedAbsences: data.unexcusedAbsences || 0,
+          };
+        });
 
-      // Sort list by grade order then last name
-      list.sort((a, b) => {
-        const gradeIdxA = GRADES.indexOf(a.grade);
-        const gradeIdxB = GRADES.indexOf(b.grade);
-        if (gradeIdxA !== gradeIdxB) return (gradeIdxA === -1 ? 99 : gradeIdxA) - (gradeIdxB === -1 ? 99 : gradeIdxB);
-        return a.fullName.localeCompare(b.fullName);
-      });
+        list.sort((a, b) => {
+          const gradeIdxA = GRADES.indexOf(a.grade);
+          const gradeIdxB = GRADES.indexOf(b.grade);
+          if (gradeIdxA !== gradeIdxB) return (gradeIdxA === -1 ? 99 : gradeIdxA) - (gradeIdxB === -1 ? 99 : gradeIdxB);
+          return a.fullName.localeCompare(b.fullName);
+        });
 
-      setScouts(list);
+        setScouts(list);
+      }
     } catch (err) {
-      console.error('Error fetching roster:', err);
+      console.warn('Could not fetch from Firebase, using offline roster:', err);
+      setScouts(INITIAL_SCOUTS);
     } finally {
       setLoadingRoster(false);
     }
   };
 
-  // When selectedDate or scouts change, load session attendance records
+  // Load session attendance records for selected date
   useEffect(() => {
-    if (!user || scouts.length === 0 || !selectedDate) return;
+    if (!currentUserEmail || scouts.length === 0 || !selectedDate) return;
     loadSessionAttendance(selectedDate);
-  }, [selectedDate, scouts.length, user]);
+  }, [selectedDate, scouts.length, currentUserEmail]);
 
   const loadSessionAttendance = async (date: string) => {
     setLoadingSession(true);
     try {
-      const sessionRecordsRef = collection(db, 'sessions', date, 'records');
-      const snap = await getDocs(sessionRecordsRef);
+      let existingData: Record<string, AttendanceStatus> = {};
 
-      const existingData: Record<string, AttendanceStatus> = {};
-      snap.docs.forEach((docSnap) => {
-        const d = docSnap.data();
-        if (d.status) {
-          existingData[docSnap.id] = d.status as AttendanceStatus;
+      if (isFirebaseConfigured && db) {
+        try {
+          const sessionRecordsRef = collection(db, 'sessions', date, 'records');
+          const snap = await getDocs(sessionRecordsRef);
+          snap.docs.forEach((docSnap) => {
+            const d = docSnap.data();
+            if (d.status) existingData[docSnap.id] = d.status as AttendanceStatus;
+          });
+        } catch (e) {
+          console.warn('Failed reading from Firestore, using local storage:', e);
         }
-      });
+      }
+
+      // Check localStorage if not found
+      if (Object.keys(existingData).length === 0) {
+        const localSaved = localStorage.getItem(`attendance_${date}`);
+        if (localSaved) {
+          try {
+            existingData = JSON.parse(localSaved);
+          } catch (e) {}
+        }
+      }
 
       // Default unset scouts to PRESENT
       const defaults: Record<string, AttendanceStatus> = {};
@@ -144,7 +190,13 @@ export default function App() {
 
   // Seed Full Roster with all 124 Scouts
   const handleSeedFullRoster = async () => {
-    if (!window.confirm('Import all 124 scouts from roster into the database?')) return;
+    if (!isFirebaseConfigured || !db) {
+      setScouts(INITIAL_SCOUTS);
+      alert(`Loaded ${INITIAL_SCOUTS.length} scouts from roster!`);
+      return;
+    }
+
+    if (!window.confirm('Import all 124 scouts from roster into the Firebase database?')) return;
     setSeeding(true);
     try {
       const batch = writeBatch(db);
@@ -162,7 +214,7 @@ export default function App() {
         });
       }
       await batch.commit();
-      alert(`Successfully imported ${INITIAL_SCOUTS.length} scouts!`);
+      alert(`Successfully imported ${INITIAL_SCOUTS.length} scouts to Firebase!`);
       await loadScouts();
     } catch (err) {
       console.error('Error seeding full roster:', err);
@@ -170,6 +222,20 @@ export default function App() {
     } finally {
       setSeeding(false);
     }
+  };
+
+  const handleSignOut = () => {
+    if (auth && isFirebaseConfigured) {
+      signOut(auth).catch(() => {});
+    }
+    localStorage.removeItem('scout_tracker_local_user');
+    setLocalUserEmail(null);
+    setFirebaseUser(null);
+  };
+
+  const handleLocalLogin = (email: string) => {
+    localStorage.setItem('scout_tracker_local_user', email);
+    setLocalUserEmail(email);
   };
 
   // Filter scouts by selected grade
@@ -223,55 +289,62 @@ export default function App() {
     setWarningList([]);
 
     try {
-      const batch = writeBatch(db);
-      const newlyFlagged: string[] = [];
+      // Always save to localStorage backup
+      localStorage.setItem(`attendance_${selectedDate}`, JSON.stringify(attendance));
 
-      // Save session metadata
-      const sessionDocRef = doc(db, 'sessions', selectedDate);
-      batch.set(sessionDocRef, {
-        date: selectedDate,
-        lastUpdated: serverTimestamp(),
-        lastUpdatedBy: user?.email,
-        eventName: currentSessionInfo?.event || 'Dhulfiqār Scouting Program',
-      }, { merge: true });
+      if (isFirebaseConfigured && db) {
+        const batch = writeBatch(db);
+        const newlyFlagged: string[] = [];
 
-      // Save records for all filtered scouts
-      filteredScouts.forEach((scout) => {
-        const currentStatus = attendance[scout.id] || 'PRESENT';
-        const recordRef = doc(db, 'sessions', selectedDate, 'records', scout.id);
-        
-        batch.set(recordRef, {
-          status: currentStatus,
-          scoutName: scout.fullName,
-          grade: scout.grade,
-          submittedBy: user?.email,
-          timestamp: serverTimestamp(),
-        });
+        // Save session metadata
+        const sessionDocRef = doc(db, 'sessions', selectedDate);
+        batch.set(sessionDocRef, {
+          date: selectedDate,
+          lastUpdated: serverTimestamp(),
+          lastUpdatedBy: currentUserEmail,
+          eventName: currentSessionInfo?.event || 'Dhulfiqār Scouting Program',
+        }, { merge: true });
 
-        if (currentStatus === 'ABSENT') {
-          const scoutRef = doc(db, 'scouts', scout.id);
-          batch.update(scoutRef, {
-            unexcusedAbsences: increment(1),
+        // Save records for all filtered scouts
+        filteredScouts.forEach((scout) => {
+          const currentStatus = attendance[scout.id] || 'PRESENT';
+          const recordRef = doc(db, 'sessions', selectedDate, 'records', scout.id);
+          
+          batch.set(recordRef, {
+            status: currentStatus,
+            scoutName: scout.fullName,
+            grade: scout.grade,
+            submittedBy: currentUserEmail,
+            timestamp: serverTimestamp(),
           });
 
-          if (scout.unexcusedAbsences + 1 >= 3) {
-            newlyFlagged.push(`${scout.fullName} (${scout.grade}) - ${scout.unexcusedAbsences + 1} absences`);
+          if (currentStatus === 'ABSENT') {
+            const scoutRef = doc(db, 'scouts', scout.id);
+            batch.update(scoutRef, {
+              unexcusedAbsences: increment(1),
+            });
+
+            if (scout.unexcusedAbsences + 1 >= 3) {
+              newlyFlagged.push(`${scout.fullName} (${scout.grade}) - ${scout.unexcusedAbsences + 1} absences`);
+            }
           }
+        });
+
+        await batch.commit();
+
+        if (newlyFlagged.length > 0) {
+          setWarningList(newlyFlagged);
+        } else {
+          alert(`Attendance for Friday (${selectedDate}) saved successfully!`);
         }
-      });
-
-      await batch.commit();
-
-      if (newlyFlagged.length > 0) {
-        setWarningList(newlyFlagged);
       } else {
-        alert(`Attendance for Friday (${selectedDate}) submitted successfully!`);
+        alert(`Attendance for Friday (${selectedDate}) saved locally!`);
       }
 
       await loadScouts();
     } catch (err) {
       console.error(err);
-      alert('Error committing records to Firebase.');
+      alert('Records saved locally. Note: Firebase sync encountered an issue.');
     } finally {
       setSaving(false);
     }
@@ -279,37 +352,38 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm">
-        Verifying leader credentials...
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-600 text-sm gap-2">
+        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <div>Loading Scout Tracker...</div>
       </div>
     );
   }
 
-  if (!user) {
-    return <Login />;
+  if (!currentUserEmail) {
+    return <Login onLocalLogin={handleLocalLogin} />;
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
+    <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4 font-sans antialiased text-slate-900">
       {/* Header */}
-      <header className="flex justify-between items-center border-b pb-3 bg-white/80 backdrop-blur sticky top-0 z-10">
+      <header className="flex justify-between items-center border-b border-slate-200 pb-3 bg-white/90 backdrop-blur sticky top-0 z-10">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Dhulfiqār Scout Check-In</h1>
-          <p className="text-xs text-slate-500">Logged in as <span className="font-medium text-slate-700">{user.email}</span></p>
+          <p className="text-xs text-slate-500">Logged in as <span className="font-medium text-slate-700">{currentUserEmail}</span></p>
         </div>
         <div className="flex items-center gap-2">
-          {scouts.length === 0 && (
+          {isFirebaseConfigured && scouts.length === 0 && (
             <button
               onClick={handleSeedFullRoster}
               disabled={seeding}
-              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3 py-1.5 rounded-md shadow-xs transition"
+              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3 py-1.5 rounded-md shadow-xs transition cursor-pointer"
             >
               {seeding ? 'Importing...' : 'Load Full Roster (124 Scouts)'}
             </button>
           )}
           <button
-            onClick={() => signOut(auth)}
-            className="text-xs text-slate-600 hover:text-slate-900 border border-slate-300 px-3 py-1.5 rounded-md bg-white hover:bg-slate-50 transition"
+            onClick={handleSignOut}
+            className="text-xs text-slate-600 hover:text-slate-900 border border-slate-300 px-3 py-1.5 rounded-md bg-white hover:bg-slate-50 transition cursor-pointer"
           >
             Sign Out
           </button>
@@ -330,7 +404,7 @@ export default function App() {
               type="checkbox"
               checked={filterProgramOnly}
               onChange={(e) => setFilterProgramOnly(e.target.checked)}
-              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
             <span>Active Program Fridays Only ({programFridays.length})</span>
           </label>
@@ -341,7 +415,7 @@ export default function App() {
             <select
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full text-xs sm:text-sm font-semibold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-xs sm:text-sm font-semibold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
               {availableFridays.map((session, idx) => (
                 <option key={`${session.date}-${idx}`} value={session.date}>
@@ -392,7 +466,7 @@ export default function App() {
               key={grade}
               type="button"
               onClick={() => setSelectedGrade(grade)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition ${
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
                 selectedGrade === grade
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -463,17 +537,6 @@ export default function App() {
         <div className="p-8 text-center text-slate-400 text-sm">
           {loadingRoster ? 'Loading scout roster...' : 'Loading session attendance records...'}
         </div>
-      ) : scouts.length === 0 ? (
-        <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl space-y-3 bg-white">
-          <p className="text-sm text-slate-500">No scouts loaded in your database yet.</p>
-          <button
-            onClick={handleSeedFullRoster}
-            disabled={seeding}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs transition"
-          >
-            {seeding ? 'Importing Roster...' : 'Import Full Roster (124 Scouts across 12 Grades)'}
-          </button>
-        </div>
       ) : filteredScouts.length === 0 ? (
         <div className="p-8 text-center border border-slate-200 rounded-xl text-slate-400 text-sm bg-white">
           No scouts registered in {selectedGrade}.
@@ -534,7 +597,7 @@ export default function App() {
           disabled={saving || loadingRoster || loadingSession}
           className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow transition-colors disabled:opacity-50 cursor-pointer"
         >
-          {saving ? 'Saving Records to Firebase...' : `Submit Attendance for Friday (${selectedDate})`}
+          {saving ? 'Saving Records...' : `Submit Attendance for Friday (${selectedDate})`}
         </button>
       )}
     </div>
