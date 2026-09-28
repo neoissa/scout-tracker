@@ -1,5 +1,7 @@
 export interface Scout {
   id: string;
+  scoutIdNumber: number;
+  sortOrder: number;
   fullName: string;
   firstName: string;
   lastName: string;
@@ -20,6 +22,8 @@ export interface GradeInfo {
 export const INITIAL_SCOUTS: Scout[] = [
   {
     "id": "scout_1",
+    "scoutIdNumber": 1,
+    "sortOrder": 1,
     "fullName": "Muhammad-Jawad Dabaja",
     "firstName": "Muhammad-Jawad",
     "lastName": "Dabaja",
@@ -31,6 +35,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_2",
+    "scoutIdNumber": 2,
+    "sortOrder": 1,
     "fullName": "Yusuf Aliedani",
     "firstName": "Yusuf",
     "lastName": "Aliedani",
@@ -42,6 +48,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_3",
+    "scoutIdNumber": 3,
+    "sortOrder": 1,
     "fullName": "Mohamad hussein Mansour",
     "firstName": "Mohamad hussein",
     "lastName": "Mansour",
@@ -53,6 +61,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_4",
+    "scoutIdNumber": 4,
+    "sortOrder": 1,
     "fullName": "Hussein Alsibai",
     "firstName": "Hussein",
     "lastName": "Alsibai",
@@ -64,6 +74,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_5",
+    "scoutIdNumber": 5,
+    "sortOrder": 1,
     "fullName": "Zayn Hamka",
     "firstName": "Zayn",
     "lastName": "Hamka",
@@ -75,6 +87,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_6",
+    "scoutIdNumber": 6,
+    "sortOrder": 1,
     "fullName": "Adam Berro",
     "firstName": "Adam",
     "lastName": "Berro",
@@ -86,6 +100,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_7",
+    "scoutIdNumber": 7,
+    "sortOrder": 1,
     "fullName": "Emad Saleh",
     "firstName": "Emad",
     "lastName": "Saleh",
@@ -97,6 +113,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_8",
+    "scoutIdNumber": 8,
+    "sortOrder": 1,
     "fullName": "Mahdi Jawad",
     "firstName": "Mahdi",
     "lastName": "Jawad",
@@ -108,6 +126,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_9",
+    "scoutIdNumber": 9,
+    "sortOrder": 1,
     "fullName": "Abbas Tarraf",
     "firstName": "Abbas",
     "lastName": "Tarraf",
@@ -119,6 +139,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_10",
+    "scoutIdNumber": 10,
+    "sortOrder": 1,
     "fullName": "Zayn Elabideen Serhan",
     "firstName": "Zayn Elabideen",
     "lastName": "Serhan",
@@ -130,6 +152,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_11",
+    "scoutIdNumber": 11,
+    "sortOrder": 1,
     "fullName": "Hassib Elzaher",
     "firstName": "Hassib",
     "lastName": "Elzaher",
@@ -141,6 +165,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_12",
+    "scoutIdNumber": 12,
+    "sortOrder": 1,
     "fullName": "Ali Naim",
     "firstName": "Ali",
     "lastName": "Naim",
@@ -152,6 +178,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_13",
+    "scoutIdNumber": 13,
+    "sortOrder": 2,
     "fullName": "Hussein Daher",
     "firstName": "Hussein",
     "lastName": "Daher",
@@ -163,6 +191,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_14",
+    "scoutIdNumber": 14,
+    "sortOrder": 2,
     "fullName": "Ali Hodroj",
     "firstName": "Ali",
     "lastName": "Hodroj",
@@ -174,6 +204,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_15",
+    "scoutIdNumber": 15,
+    "sortOrder": 2,
     "fullName": "Mohamad Markabani",
     "firstName": "Mohamad",
     "lastName": "Markabani",
@@ -185,6 +217,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_16",
+    "scoutIdNumber": 16,
+    "sortOrder": 2,
     "fullName": "Kareem Dia",
     "firstName": "Kareem",
     "lastName": "Dia",
@@ -196,6 +230,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_17",
+    "scoutIdNumber": 17,
+    "sortOrder": 2,
     "fullName": "Rami Saleh",
     "firstName": "Rami",
     "lastName": "Saleh",
@@ -207,6 +243,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_18",
+    "scoutIdNumber": 18,
+    "sortOrder": 2,
     "fullName": "Ali Beydoun",
     "firstName": "Ali",
     "lastName": "Beydoun",
@@ -218,6 +256,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_19",
+    "scoutIdNumber": 19,
+    "sortOrder": 2,
     "fullName": "Adam Alsaeed",
     "firstName": "Adam",
     "lastName": "Alsaeed",
@@ -229,6 +269,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_20",
+    "scoutIdNumber": 20,
+    "sortOrder": 2,
     "fullName": "Ahmad Joud Dawood",
     "firstName": "Ahmad Joud",
     "lastName": "Dawood",
@@ -240,6 +282,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_21",
+    "scoutIdNumber": 21,
+    "sortOrder": 2,
     "fullName": "Mohammad-laith Ammar",
     "firstName": "Mohammad-laith",
     "lastName": "Ammar",
@@ -251,6 +295,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_22",
+    "scoutIdNumber": 22,
+    "sortOrder": 2,
     "fullName": "Ali Sayed",
     "firstName": "Ali",
     "lastName": "Sayed",
@@ -262,6 +308,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_23",
+    "scoutIdNumber": 23,
+    "sortOrder": 2,
     "fullName": "Muhammad Ali Makki",
     "firstName": "Muhammad Ali",
     "lastName": "Makki",
@@ -273,6 +321,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_24",
+    "scoutIdNumber": 24,
+    "sortOrder": 3,
     "fullName": "Ali Jouni",
     "firstName": "Ali",
     "lastName": "Jouni",
@@ -284,6 +334,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_25",
+    "scoutIdNumber": 25,
+    "sortOrder": 3,
     "fullName": "Jad Houraibi",
     "firstName": "Jad",
     "lastName": "Houraibi",
@@ -295,6 +347,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_26",
+    "scoutIdNumber": 26,
+    "sortOrder": 3,
     "fullName": "Mahmoud Dabajeh",
     "firstName": "Mahmoud",
     "lastName": "Dabajeh",
@@ -306,6 +360,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_27",
+    "scoutIdNumber": 27,
+    "sortOrder": 3,
     "fullName": "Ali Mehdi",
     "firstName": "Ali",
     "lastName": "Mehdi",
@@ -317,6 +373,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_28",
+    "scoutIdNumber": 28,
+    "sortOrder": 3,
     "fullName": "Adam Dheini",
     "firstName": "Adam",
     "lastName": "Dheini",
@@ -328,6 +386,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_29",
+    "scoutIdNumber": 29,
+    "sortOrder": 3,
     "fullName": "Youssef Mokkaled",
     "firstName": "Youssef",
     "lastName": "Mokkaled",
@@ -339,6 +399,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_30",
+    "scoutIdNumber": 30,
+    "sortOrder": 3,
     "fullName": "Jihad Sabra",
     "firstName": "Jihad",
     "lastName": "Sabra",
@@ -350,6 +412,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_31",
+    "scoutIdNumber": 31,
+    "sortOrder": 3,
     "fullName": "Hussein Chouaib",
     "firstName": "Hussein",
     "lastName": "Chouaib",
@@ -361,6 +425,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_32",
+    "scoutIdNumber": 32,
+    "sortOrder": 3,
     "fullName": "Mohammed Jouni",
     "firstName": "Mohammed",
     "lastName": "Jouni",
@@ -372,6 +438,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_33",
+    "scoutIdNumber": 33,
+    "sortOrder": 3,
     "fullName": "Ali Ghoul",
     "firstName": "Ali",
     "lastName": "Ghoul",
@@ -383,6 +451,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_34",
+    "scoutIdNumber": 34,
+    "sortOrder": 4,
     "fullName": "Jude Saleh",
     "firstName": "Jude",
     "lastName": "Saleh",
@@ -394,6 +464,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_35",
+    "scoutIdNumber": 35,
+    "sortOrder": 4,
     "fullName": "Hussein Hamze",
     "firstName": "Hussein",
     "lastName": "Hamze",
@@ -405,6 +477,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_36",
+    "scoutIdNumber": 36,
+    "sortOrder": 4,
     "fullName": "Hussein Dheini",
     "firstName": "Hussein",
     "lastName": "Dheini",
@@ -416,6 +490,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_37",
+    "scoutIdNumber": 37,
+    "sortOrder": 4,
     "fullName": "Ahmad Zahr",
     "firstName": "Ahmad",
     "lastName": "Zahr",
@@ -427,6 +503,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_38",
+    "scoutIdNumber": 38,
+    "sortOrder": 4,
     "fullName": "Mostafa Beydoun",
     "firstName": "Mostafa",
     "lastName": "Beydoun",
@@ -438,6 +516,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_39",
+    "scoutIdNumber": 39,
+    "sortOrder": 4,
     "fullName": "Mohamad Ali Zeine",
     "firstName": "Mohamad Ali",
     "lastName": "Zeine",
@@ -449,6 +529,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_40",
+    "scoutIdNumber": 40,
+    "sortOrder": 4,
     "fullName": "Ali Sabra",
     "firstName": "Ali",
     "lastName": "Sabra",
@@ -460,6 +542,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_41",
+    "scoutIdNumber": 41,
+    "sortOrder": 4,
     "fullName": "Hadi Kourani",
     "firstName": "Hadi",
     "lastName": "Kourani",
@@ -471,6 +555,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_42",
+    "scoutIdNumber": 42,
+    "sortOrder": 4,
     "fullName": "Mahdi Bazzi",
     "firstName": "Mahdi",
     "lastName": "Bazzi",
@@ -482,6 +568,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_43",
+    "scoutIdNumber": 43,
+    "sortOrder": 4,
     "fullName": "Zayn Hammoud",
     "firstName": "Zayn",
     "lastName": "Hammoud",
@@ -493,6 +581,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_44",
+    "scoutIdNumber": 44,
+    "sortOrder": 5,
     "fullName": "Ali Ayash",
     "firstName": "Ali",
     "lastName": "Ayash",
@@ -504,6 +594,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_45",
+    "scoutIdNumber": 45,
+    "sortOrder": 5,
     "fullName": "Ali Reda JALLOUL",
     "firstName": "Ali Reda",
     "lastName": "JALLOUL",
@@ -515,6 +607,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_46",
+    "scoutIdNumber": 46,
+    "sortOrder": 5,
     "fullName": "Mahdi Daher",
     "firstName": "Mahdi",
     "lastName": "Daher",
@@ -526,6 +620,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_47",
+    "scoutIdNumber": 47,
+    "sortOrder": 5,
     "fullName": "Abbas Alsayed",
     "firstName": "Abbas",
     "lastName": "Alsayed",
@@ -537,6 +633,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_48",
+    "scoutIdNumber": 48,
+    "sortOrder": 5,
     "fullName": "Adam Nemer",
     "firstName": "Adam",
     "lastName": "Nemer",
@@ -548,6 +646,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_49",
+    "scoutIdNumber": 49,
+    "sortOrder": 5,
     "fullName": "Hachem Hachem",
     "firstName": "Hachem",
     "lastName": "Hachem",
@@ -559,6 +659,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_50",
+    "scoutIdNumber": 50,
+    "sortOrder": 5,
     "fullName": "Hussein Saab",
     "firstName": "Hussein",
     "lastName": "Saab",
@@ -570,6 +672,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_51",
+    "scoutIdNumber": 51,
+    "sortOrder": 5,
     "fullName": "Moussa Sobh",
     "firstName": "Moussa",
     "lastName": "Sobh",
@@ -581,6 +685,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_52",
+    "scoutIdNumber": 52,
+    "sortOrder": 5,
     "fullName": "Ali Baydoun",
     "firstName": "Ali",
     "lastName": "Baydoun",
@@ -592,6 +698,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_53",
+    "scoutIdNumber": 53,
+    "sortOrder": 5,
     "fullName": "Muhamed-Ali Saad",
     "firstName": "Muhamed-Ali",
     "lastName": "Saad",
@@ -603,6 +711,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_54",
+    "scoutIdNumber": 54,
+    "sortOrder": 5,
     "fullName": "zane Kourani",
     "firstName": "zane",
     "lastName": "Kourani",
@@ -614,6 +724,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_55",
+    "scoutIdNumber": 55,
+    "sortOrder": 5,
     "fullName": "Mohammed Kattan",
     "firstName": "Mohammed",
     "lastName": "Kattan",
@@ -625,6 +737,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_56",
+    "scoutIdNumber": 56,
+    "sortOrder": 5,
     "fullName": "Saleh Farhat",
     "firstName": "Saleh",
     "lastName": "Farhat",
@@ -636,6 +750,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_57",
+    "scoutIdNumber": 57,
+    "sortOrder": 5,
     "fullName": "Mohamed Ali Serhan",
     "firstName": "Mohamed Ali",
     "lastName": "Serhan",
@@ -647,6 +763,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_58",
+    "scoutIdNumber": 58,
+    "sortOrder": 5,
     "fullName": "Ali Kanj",
     "firstName": "Ali",
     "lastName": "Kanj",
@@ -658,6 +776,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_59",
+    "scoutIdNumber": 59,
+    "sortOrder": 6,
     "fullName": "Yusuf Hodroj",
     "firstName": "Yusuf",
     "lastName": "Hodroj",
@@ -669,6 +789,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_60",
+    "scoutIdNumber": 60,
+    "sortOrder": 6,
     "fullName": "Hasan Ghoul",
     "firstName": "Hasan",
     "lastName": "Ghoul",
@@ -680,6 +802,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_61",
+    "scoutIdNumber": 61,
+    "sortOrder": 6,
     "fullName": "Hassan Hammoud",
     "firstName": "Hassan",
     "lastName": "Hammoud",
@@ -691,6 +815,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_62",
+    "scoutIdNumber": 62,
+    "sortOrder": 6,
     "fullName": "Elie Saleh",
     "firstName": "Elie",
     "lastName": "Saleh",
@@ -702,6 +828,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_63",
+    "scoutIdNumber": 63,
+    "sortOrder": 6,
     "fullName": "ali Yassine",
     "firstName": "ali",
     "lastName": "Yassine",
@@ -713,6 +841,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_64",
+    "scoutIdNumber": 64,
+    "sortOrder": 6,
     "fullName": "Yousef Nemer",
     "firstName": "Yousef",
     "lastName": "Nemer",
@@ -724,6 +854,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_65",
+    "scoutIdNumber": 65,
+    "sortOrder": 6,
     "fullName": "Abraham Farhat",
     "firstName": "Abraham",
     "lastName": "Farhat",
@@ -735,6 +867,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_66",
+    "scoutIdNumber": 66,
+    "sortOrder": 6,
     "fullName": "Steve Bertikian",
     "firstName": "Steve",
     "lastName": "Bertikian",
@@ -746,6 +880,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_67",
+    "scoutIdNumber": 67,
+    "sortOrder": 6,
     "fullName": "Ibrahim Youness",
     "firstName": "Ibrahim",
     "lastName": "Youness",
@@ -757,6 +893,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_68",
+    "scoutIdNumber": 68,
+    "sortOrder": 6,
     "fullName": "Najib Beydoun",
     "firstName": "Najib",
     "lastName": "Beydoun",
@@ -768,6 +906,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_69",
+    "scoutIdNumber": 69,
+    "sortOrder": 6,
     "fullName": "Jawad Fakhreddine",
     "firstName": "Jawad",
     "lastName": "Fakhreddine",
@@ -779,6 +919,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_70",
+    "scoutIdNumber": 70,
+    "sortOrder": 6,
     "fullName": "Khalil Sabbagh",
     "firstName": "Khalil",
     "lastName": "Sabbagh",
@@ -790,6 +932,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_71",
+    "scoutIdNumber": 71,
+    "sortOrder": 6,
     "fullName": "Ahmad Hammoud",
     "firstName": "Ahmad",
     "lastName": "Hammoud",
@@ -801,6 +945,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_72",
+    "scoutIdNumber": 72,
+    "sortOrder": 6,
     "fullName": "Mahmoud Jouni",
     "firstName": "Mahmoud",
     "lastName": "Jouni",
@@ -812,6 +958,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_73",
+    "scoutIdNumber": 73,
+    "sortOrder": 7,
     "fullName": "Issa Chamseddine",
     "firstName": "Issa",
     "lastName": "Chamseddine",
@@ -823,6 +971,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_74",
+    "scoutIdNumber": 74,
+    "sortOrder": 7,
     "fullName": "Hadi Bazzi",
     "firstName": "Hadi",
     "lastName": "Bazzi",
@@ -834,6 +984,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_75",
+    "scoutIdNumber": 75,
+    "sortOrder": 7,
     "fullName": "Ali Aliedani",
     "firstName": "Ali",
     "lastName": "Aliedani",
@@ -845,6 +997,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_76",
+    "scoutIdNumber": 76,
+    "sortOrder": 7,
     "fullName": "Ali Alsibai",
     "firstName": "Ali",
     "lastName": "Alsibai",
@@ -856,6 +1010,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_77",
+    "scoutIdNumber": 77,
+    "sortOrder": 7,
     "fullName": "Rida Moussa",
     "firstName": "Rida",
     "lastName": "Moussa",
@@ -867,6 +1023,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_78",
+    "scoutIdNumber": 78,
+    "sortOrder": 7,
     "fullName": "Mohammad Berro",
     "firstName": "Mohammad",
     "lastName": "Berro",
@@ -878,6 +1036,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_79",
+    "scoutIdNumber": 79,
+    "sortOrder": 7,
     "fullName": "Kian Saleh",
     "firstName": "Kian",
     "lastName": "Saleh",
@@ -889,6 +1049,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_80",
+    "scoutIdNumber": 80,
+    "sortOrder": 7,
     "fullName": "Mahdi Hammoud",
     "firstName": "Mahdi",
     "lastName": "Hammoud",
@@ -900,6 +1062,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_81",
+    "scoutIdNumber": 81,
+    "sortOrder": 7,
     "fullName": "Mohamad Jawad Dawood",
     "firstName": "Mohamad Jawad",
     "lastName": "Dawood",
@@ -911,6 +1075,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_82",
+    "scoutIdNumber": 82,
+    "sortOrder": 7,
     "fullName": "Adam Khalil",
     "firstName": "Adam",
     "lastName": "Khalil",
@@ -922,6 +1088,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_83",
+    "scoutIdNumber": 83,
+    "sortOrder": 7,
     "fullName": "Adam Khalife",
     "firstName": "Adam",
     "lastName": "Khalife",
@@ -933,6 +1101,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_84",
+    "scoutIdNumber": 84,
+    "sortOrder": 7,
     "fullName": "Mehdi Alhussainy",
     "firstName": "Mehdi",
     "lastName": "Alhussainy",
@@ -944,6 +1114,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_85",
+    "scoutIdNumber": 85,
+    "sortOrder": 8,
     "fullName": "Mohamad Saab",
     "firstName": "Mohamad",
     "lastName": "Saab",
@@ -955,6 +1127,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_86",
+    "scoutIdNumber": 86,
+    "sortOrder": 8,
     "fullName": "Issam Ammar",
     "firstName": "Issam",
     "lastName": "Ammar",
@@ -966,6 +1140,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_87",
+    "scoutIdNumber": 87,
+    "sortOrder": 8,
     "fullName": "Hassan Atwi",
     "firstName": "Hassan",
     "lastName": "Atwi",
@@ -977,6 +1153,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_88",
+    "scoutIdNumber": 88,
+    "sortOrder": 8,
     "fullName": "Ali Issa",
     "firstName": "Ali",
     "lastName": "Issa",
@@ -988,6 +1166,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_89",
+    "scoutIdNumber": 89,
+    "sortOrder": 8,
     "fullName": "Jaber Bazzi",
     "firstName": "Jaber",
     "lastName": "Bazzi",
@@ -999,6 +1179,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_90",
+    "scoutIdNumber": 90,
+    "sortOrder": 8,
     "fullName": "Hussein Nehme",
     "firstName": "Hussein",
     "lastName": "Nehme",
@@ -1010,6 +1192,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_91",
+    "scoutIdNumber": 91,
+    "sortOrder": 8,
     "fullName": "Ali Markabani",
     "firstName": "Ali",
     "lastName": "Markabani",
@@ -1021,6 +1205,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_92",
+    "scoutIdNumber": 92,
+    "sortOrder": 8,
     "fullName": "Kamel Dia",
     "firstName": "Kamel",
     "lastName": "Dia",
@@ -1032,6 +1218,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_93",
+    "scoutIdNumber": 93,
+    "sortOrder": 8,
     "fullName": "Youssef Assi",
     "firstName": "Youssef",
     "lastName": "Assi",
@@ -1043,6 +1231,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_94",
+    "scoutIdNumber": 94,
+    "sortOrder": 8,
     "fullName": "Zein Kassem",
     "firstName": "Zein",
     "lastName": "Kassem",
@@ -1054,6 +1244,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_95",
+    "scoutIdNumber": 95,
+    "sortOrder": 8,
     "fullName": "Amer Elzaher",
     "firstName": "Amer",
     "lastName": "Elzaher",
@@ -1065,6 +1257,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_96",
+    "scoutIdNumber": 96,
+    "sortOrder": 8,
     "fullName": "Hassan Hammoud",
     "firstName": "Hassan",
     "lastName": "Hammoud",
@@ -1076,6 +1270,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_97",
+    "scoutIdNumber": 97,
+    "sortOrder": 8,
     "fullName": "Youssef Dia",
     "firstName": "Youssef",
     "lastName": "Dia",
@@ -1087,6 +1283,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_98",
+    "scoutIdNumber": 98,
+    "sortOrder": 9,
     "fullName": "Husayn Ghoul",
     "firstName": "Husayn",
     "lastName": "Ghoul",
@@ -1098,6 +1296,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_99",
+    "scoutIdNumber": 99,
+    "sortOrder": 9,
     "fullName": "hadi yassine",
     "firstName": "hadi",
     "lastName": "yassine",
@@ -1109,6 +1309,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_100",
+    "scoutIdNumber": 100,
+    "sortOrder": 9,
     "fullName": "Hadi Youness",
     "firstName": "Hadi",
     "lastName": "Youness",
@@ -1120,6 +1322,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_101",
+    "scoutIdNumber": 101,
+    "sortOrder": 9,
     "fullName": "Mohammad Hammoud",
     "firstName": "Mohammad",
     "lastName": "Hammoud",
@@ -1131,6 +1335,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_102",
+    "scoutIdNumber": 102,
+    "sortOrder": 9,
     "fullName": "Jaffer Jaffer",
     "firstName": "Jaffer",
     "lastName": "Jaffer",
@@ -1142,6 +1348,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_103",
+    "scoutIdNumber": 103,
+    "sortOrder": 9,
     "fullName": "Hussein Awada",
     "firstName": "Hussein",
     "lastName": "Awada",
@@ -1153,6 +1361,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_104",
+    "scoutIdNumber": 104,
+    "sortOrder": 9,
     "fullName": "Sajed Kachmar",
     "firstName": "Sajed",
     "lastName": "Kachmar",
@@ -1164,6 +1374,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_105",
+    "scoutIdNumber": 105,
+    "sortOrder": 9,
     "fullName": "Mahdi Zalghout",
     "firstName": "Mahdi",
     "lastName": "Zalghout",
@@ -1175,6 +1387,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_106",
+    "scoutIdNumber": 106,
+    "sortOrder": 10,
     "fullName": "Jad Diab",
     "firstName": "Jad",
     "lastName": "Diab",
@@ -1186,6 +1400,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_107",
+    "scoutIdNumber": 107,
+    "sortOrder": 10,
     "fullName": "Ali Mourtada",
     "firstName": "Ali",
     "lastName": "Mourtada",
@@ -1197,6 +1413,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_108",
+    "scoutIdNumber": 108,
+    "sortOrder": 10,
     "fullName": "Hassan Nehme",
     "firstName": "Hassan",
     "lastName": "Nehme",
@@ -1208,6 +1426,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_109",
+    "scoutIdNumber": 109,
+    "sortOrder": 10,
     "fullName": "Haroun Bazzi",
     "firstName": "Haroun",
     "lastName": "Bazzi",
@@ -1219,6 +1439,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_110",
+    "scoutIdNumber": 110,
+    "sortOrder": 10,
     "fullName": "Ali Elzaher",
     "firstName": "Ali",
     "lastName": "Elzaher",
@@ -1230,6 +1452,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_111",
+    "scoutIdNumber": 111,
+    "sortOrder": 10,
     "fullName": "Mustafa hasan",
     "firstName": "Mustafa",
     "lastName": "hasan",
@@ -1241,6 +1465,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_112",
+    "scoutIdNumber": 112,
+    "sortOrder": 10,
     "fullName": "Ali Farhat",
     "firstName": "Ali",
     "lastName": "Farhat",
@@ -1252,6 +1478,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_113",
+    "scoutIdNumber": 113,
+    "sortOrder": 10,
     "fullName": "Alirida Serhan",
     "firstName": "Alirida",
     "lastName": "Serhan",
@@ -1263,6 +1491,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_114",
+    "scoutIdNumber": 114,
+    "sortOrder": 10,
     "fullName": "Jaafar Fakhreddine",
     "firstName": "Jaafar",
     "lastName": "Fakhreddine",
@@ -1274,6 +1504,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_115",
+    "scoutIdNumber": 115,
+    "sortOrder": 11,
     "fullName": "Ali Nehme",
     "firstName": "Ali",
     "lastName": "Nehme",
@@ -1285,6 +1517,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_116",
+    "scoutIdNumber": 116,
+    "sortOrder": 11,
     "fullName": "Hussain Aljawad",
     "firstName": "Hussain",
     "lastName": "Aljawad",
@@ -1296,6 +1530,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_117",
+    "scoutIdNumber": 117,
+    "sortOrder": 11,
     "fullName": "Ali Wazne",
     "firstName": "Ali",
     "lastName": "Wazne",
@@ -1307,6 +1543,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_118",
+    "scoutIdNumber": 118,
+    "sortOrder": 11,
     "fullName": "Hussein Kassem",
     "firstName": "Hussein",
     "lastName": "Kassem",
@@ -1318,6 +1556,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_119",
+    "scoutIdNumber": 119,
+    "sortOrder": 11,
     "fullName": "Mohamad Issa",
     "firstName": "Mohamad",
     "lastName": "Issa",
@@ -1329,6 +1569,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_120",
+    "scoutIdNumber": 120,
+    "sortOrder": 11,
     "fullName": "Hassan Jaffer",
     "firstName": "Hassan",
     "lastName": "Jaffer",
@@ -1340,6 +1582,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_121",
+    "scoutIdNumber": 121,
+    "sortOrder": 11,
     "fullName": "Jad Nehme",
     "firstName": "Jad",
     "lastName": "Nehme",
@@ -1351,6 +1595,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_122",
+    "scoutIdNumber": 122,
+    "sortOrder": 11,
     "fullName": "Jawad Hammoud",
     "firstName": "Jawad",
     "lastName": "Hammoud",
@@ -1362,6 +1608,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_123",
+    "scoutIdNumber": 123,
+    "sortOrder": 12,
     "fullName": "Hussein Assi",
     "firstName": "Hussein",
     "lastName": "Assi",
@@ -1373,6 +1621,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_124",
+    "scoutIdNumber": 124,
+    "sortOrder": 12,
     "fullName": "Adam Hamoud",
     "firstName": "Adam",
     "lastName": "Hamoud",
@@ -1384,6 +1634,8 @@ export const INITIAL_SCOUTS: Scout[] = [
   },
   {
     "id": "scout_125",
+    "scoutIdNumber": 124,
+    "sortOrder": 12,
     "fullName": "Ali Kourani",
     "firstName": "Ali",
     "lastName": "Kourani",
