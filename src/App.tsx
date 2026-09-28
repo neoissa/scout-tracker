@@ -27,17 +27,18 @@ import {
   resetUserPassword, 
   hasCustomPassword, 
   verifyUserPassword,
-  getSavedPasswords 
+  getSavedPasswords
 } from './config/authConfig';
 import { 
-  INFRACTION_PRESETS, 
+  INFRACTION_PRESETS,
   WARNING_STAGES, 
   getScoutWarningStage,
   type AccountabilityCategory
 } from './config/accountabilityConfig';
+import { downloadLivePatrolExcel, downloadLivePatrolCsv } from './utils/exportReport';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'EXCUSED';
-type ActiveTab = 'checkin' | 'accountability' | 'roster' | 'schedule' | 'account';
+type ActiveTab = 'checkin' | 'accountability' | 'pointguide' | 'roster' | 'schedule' | 'account';
 
 const ALL_GRADES = [
   'Kindergarten',
@@ -163,6 +164,16 @@ export default function App() {
     }
     return [];
   });
+
+  // Live Patrol Progress & Attendance Export State
+  const [exportGradeSelection, setExportGradeSelection] = useState<string>('All Units');
+  const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
+
+  // Point Guide Tab State
+  const [guideCategoryTab, setGuideCategoryTab] = useState<'ALL' | AccountabilityCategory>('ALL');
+  const [guideSearch, setGuideSearch] = useState<string>('');
+  const [simCurrentPoints, setSimCurrentPoints] = useState<number>(2);
+  const [simSelectedPresetId, setSimSelectedPresetId] = useState<string>('beh_moderate_2');
 
   // Save scouts cache to localStorage on update
   useEffect(() => {
@@ -451,8 +462,12 @@ export default function App() {
     }
   };
 
-  // Database Backup / Export JSON
+  // Database Backup / Export JSON (Admin & Troop Leader Only)
   const handleExportDatabaseJson = () => {
+    if (!isAdmin) {
+      alert('Only Admin and Troop Leader accounts have permission to export the database.');
+      return;
+    }
     const backupData = {
       version: '2.0.0',
       exportDate: new Date().toISOString(),
@@ -476,6 +491,10 @@ export default function App() {
   };
 
   const handleImportDatabaseJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAdmin) {
+      alert('Only Admin and Troop Leader accounts have permission to restore the database.');
+      return;
+    }
     const fileReader = new FileReader();
     if (e.target.files && e.target.files[0]) {
       fileReader.readAsText(e.target.files[0], "UTF-8");
@@ -517,6 +536,58 @@ export default function App() {
           alert('Failed to parse backup JSON file.');
         }
       };
+    }
+  };
+
+  // Live Patrol Progress & Attendance Reports Export
+  const handleExportPatrolExcel = async (overrideGrade?: string) => {
+    setIsExportingExcel(true);
+    try {
+      const targetGrade = overrideGrade || (isAdmin ? exportGradeSelection : (leaderProfile?.assignedGrade || 'All Units'));
+      const targetScouts = (targetGrade === 'All Units' || targetGrade === 'All Grades')
+        ? scouts
+        : scouts.filter(s => s.grade === targetGrade);
+
+      await downloadLivePatrolExcel({
+        scouts: targetScouts,
+        allSessions: FRIDAY_SESSIONS,
+        customTaliahNames,
+        leaderProfile,
+        accountabilityLogs,
+        selectedGrade: targetGrade,
+        currentSessionDate: selectedDate,
+        currentSessionAttendance: attendance
+      });
+      setSubmissionMsg(`Downloaded live progress Excel report for ${targetGrade}!`);
+    } catch (err) {
+      console.error('Failed to export Excel report:', err);
+      alert('Failed to generate Excel report. Please try again.');
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
+  const handleExportPatrolCsv = (overrideGrade?: string) => {
+    try {
+      const targetGrade = overrideGrade || (isAdmin ? exportGradeSelection : (leaderProfile?.assignedGrade || 'All Units'));
+      const targetScouts = (targetGrade === 'All Units' || targetGrade === 'All Grades')
+        ? scouts
+        : scouts.filter(s => s.grade === targetGrade);
+
+      downloadLivePatrolCsv({
+        scouts: targetScouts,
+        allSessions: FRIDAY_SESSIONS,
+        customTaliahNames,
+        leaderProfile,
+        accountabilityLogs,
+        selectedGrade: targetGrade,
+        currentSessionDate: selectedDate,
+        currentSessionAttendance: attendance
+      });
+      setSubmissionMsg(`Downloaded live progress CSV report for ${targetGrade}!`);
+    } catch (err) {
+      console.error('Failed to export CSV report:', err);
+      alert('Failed to generate CSV report. Please try again.');
     }
   };
 
@@ -724,6 +795,23 @@ export default function App() {
       avgPoints: (totalPts / filteredScouts.length).toFixed(1)
     };
   }, [filteredScouts]);
+
+  // Filtered presets for Point System Guide
+  const filteredGuidePresets = useMemo(() => {
+    let list = INFRACTION_PRESETS;
+    if (guideCategoryTab !== 'ALL') {
+      list = list.filter((p) => p.category === guideCategoryTab);
+    }
+    if (guideSearch.trim()) {
+      const q = guideSearch.toLowerCase();
+      list = list.filter((p) =>
+        p.title.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        p.tier.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [guideCategoryTab, guideSearch]);
 
   const handleStatusToggle = (scoutId: string, status: AttendanceStatus) => {
     setAttendance((prev) => ({
@@ -1450,23 +1538,34 @@ export default function App() {
                   </h2>
                   <p className="text-[11px] text-[#66736c]">Dhulfiqār Scouts Behavior Point System</p>
                 </div>
-                <div className="text-right">
-                  <span className="scout-pill-gold font-bold text-[11px]">
-                    {activeTaliah ? activeTaliah.taliahRank : assignedGradeName}
-                  </span>
-                  {activeTaliah && (
-                    <div className="text-[10.5px] font-bold text-[#123c2d] mt-0.5 flex items-center justify-end gap-1">
-                      <span>⚜️ {activeTaliah.taliahName}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditTaliah(selectedGrade)}
-                        className="text-[9.5px] text-[#8a6514] hover:underline cursor-pointer"
-                        title="Edit Ṭalīʿah Name"
-                      >
-                        ✏️
-                      </button>
-                    </div>
-                  )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleExportPatrolExcel(selectedGrade !== 'All Grades' ? selectedGrade : undefined)}
+                    disabled={isExportingExcel}
+                    className="scout-btn-outline text-[10.5px] py-1 px-2 flex items-center gap-1 shadow-xs cursor-pointer text-[#123c2d]"
+                    title="Download live patrol progress and behavior report (.xlsx)"
+                  >
+                    <span>📊</span> Export Sheet
+                  </button>
+                  <div className="text-right">
+                    <span className="scout-pill-gold font-bold text-[11px]">
+                      {activeTaliah ? activeTaliah.taliahRank : assignedGradeName}
+                    </span>
+                    {activeTaliah && (
+                      <div className="text-[10.5px] font-bold text-[#123c2d] mt-0.5 flex items-center justify-end gap-1">
+                        <span>⚜️ {activeTaliah.taliahName}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditTaliah(selectedGrade)}
+                          className="text-[9.5px] text-[#8a6514] hover:underline cursor-pointer"
+                          title="Edit Ṭalīʿah Name"
+                        >
+                          ✏️
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1548,62 +1647,26 @@ export default function App() {
               </div>
             )}
 
-            {/* Official Dhulfiqār Point Accumulation Path Guide (Slide 4 & 5) */}
-            <div className="scout-card space-y-3">
-              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">📜</span>
-                  <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                      Point Accumulation Path Reference
-                    </h3>
-                    <p className="text-[10px] text-[#66736c]">Official progression from behavior slides</p>
+            {/* Official Dhulfiqār Point System Guide Quick Access Banner */}
+            <div
+              onClick={() => setActiveTab('pointguide')}
+              className="scout-card bg-[#fdfaf2] border-[#ebd9a2] p-3.5 cursor-pointer hover:bg-[#faf4e4] transition flex items-center justify-between gap-2.5 shadow-xs"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚖️</span>
+                <div>
+                  <div className="text-xs font-extrabold text-[#123c2d] flex items-center gap-1.5">
+                    <span>Official Point System & Leader Guide</span>
+                    <span className="scout-pill-gold text-[9.5px] px-1.5 py-0 font-bold">Policy Manual</span>
+                  </div>
+                  <div className="text-[10.5px] text-[#8a6514] mt-0.5">
+                    Explore the 0–10+ point progression, warning tiers, deduction rules & preset catalog
                   </div>
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {WARNING_STAGES.map((ws) => (
-                  <div
-                    key={ws.stage}
-                    className={`p-2.5 rounded-xl border flex items-start gap-2 ${ws.badgeClass}`}
-                  >
-                    <span className="text-lg leading-none mt-0.5">{ws.icon}</span>
-                    <div className="min-w-0">
-                      <div className="text-xs font-extrabold flex items-center gap-1.5">
-                        <span>{ws.label}</span>
-                        <span className="text-[10px] opacity-80 font-bold">({ws.pointRange})</span>
-                      </div>
-                      <div className="text-[10.5px] opacity-90 leading-snug mt-0.5">
-                        {ws.action}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Policy Overrides & Improvement (Slide 4 & 5) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-[#f0ebe0]">
-                <div className="p-2.5 bg-[#f0f9f3] rounded-xl border border-[#bbf7d0] space-y-1">
-                  <div className="text-xs font-extrabold text-[#166534] flex items-center gap-1">
-                    <span>🌟 Improvement Matters</span>
-                    <span className="text-[9.5px] bg-[#dcfce7] px-1.5 py-0.2 rounded-full font-bold">-1 Point</span>
-                  </div>
-                  <p className="text-[10px] text-[#14532d] leading-relaxed">
-                    6 consecutive program weeks without points + demonstrated improvement allows <strong>-1 point deduction</strong> (leader approval).
-                  </p>
-                </div>
-
-                <div className="p-2.5 bg-[#fef2f2] rounded-xl border border-[#fecaca] space-y-1">
-                  <div className="text-xs font-extrabold text-[#991b1b] flex items-center gap-1">
-                    <span>🚨 Misconduct Override</span>
-                    <span className="text-[9.5px] bg-[#fee2e2] px-1.5 py-0.2 rounded-full font-bold">Immediate Escalation</span>
-                  </div>
-                  <p className="text-[10px] text-[#7f1d1d] leading-relaxed">
-                    Severe misconduct (explicit content, violence, major safety violation) bypasses standard steps directly to <strong>Removal Review</strong>.
-                  </p>
-                </div>
-              </div>
+              <span className="text-xs font-bold text-[#123c2d] bg-white px-2.5 py-1.5 rounded-xl border border-[#ebd9a2] shadow-2xs flex-shrink-0 flex items-center gap-1">
+                <span>Open Guide</span> ➔
+              </span>
             </div>
 
             {/* Scouts Accountability Action List */}
@@ -1697,7 +1760,331 @@ export default function App() {
           </main>
         )}
 
-        {/* TAB 3: PATROL ROSTER */}
+        {/* TAB: STANDALONE OFFICIAL POINT SYSTEM & HOW TO TAKE POINTS GUIDE */}
+        {activeTab === 'pointguide' && (
+          <main className="p-4 space-y-3.5">
+            {/* Screen Header */}
+            <div className="scout-card p-3.5 space-y-2">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl">⚖️</span>
+                  <div>
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                      Point System & Leader Guide
+                    </h2>
+                    <p className="text-[11px] text-[#66736c]">
+                      Dhulfiqār Scouting Program • Official manual on how to evaluate & assign points
+                    </p>
+                  </div>
+                </div>
+                <span className="scout-pill-gold text-[10px] font-bold flex-shrink-0">
+                  Official Policy
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1.5 text-center text-xs pt-1">
+                <div className="p-2 bg-[#faf8f2] rounded-xl border border-[#ede8dc]">
+                  <div className="text-[9.5px] font-bold text-[#8a6514]">SCALE</div>
+                  <div className="font-extrabold text-[#123c2d] text-sm">0 to 10+</div>
+                  <div className="text-[8.5px] text-[#66736c]">Cumulative Path</div>
+                </div>
+                <div className="p-2 bg-[#faf8f2] rounded-xl border border-[#ede8dc]">
+                  <div className="text-[9.5px] font-bold text-[#8a6514]">TIERS</div>
+                  <div className="font-extrabold text-[#123c2d] text-sm">6 Stages</div>
+                  <div className="text-[8.5px] text-[#66736c]">Coaching → Removal</div>
+                </div>
+                <div className="p-2 bg-[#faf8f2] rounded-xl border border-[#ede8dc]">
+                  <div className="text-[9.5px] font-bold text-[#8a6514]">GROWTH</div>
+                  <div className="font-extrabold text-[#166534] text-sm">-1 Point</div>
+                  <div className="text-[8.5px] text-[#66736c]">6 Clean Weeks</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 1: The Exact Point Accumulation Path Reference (Matching Official Slides) */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📜</span>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                      POINT ACCUMULATION PATH REFERENCE
+                    </h3>
+                    <p className="text-[10px] text-[#66736c]">Official progression from behavior slides</p>
+                  </div>
+                </div>
+                <span className="scout-pill text-[10px] font-bold">
+                  Standard Path
+                </span>
+              </div>
+
+              {/* Grid of 6 Warning Stages */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {WARNING_STAGES.map((ws) => (
+                  <div
+                    key={ws.stage}
+                    className={`p-3 rounded-2xl border flex items-start gap-2.5 shadow-2xs transition hover:shadow-xs ${ws.badgeClass}`}
+                  >
+                    <span className="text-xl leading-none mt-0.5">{ws.icon}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-extrabold flex items-center justify-between">
+                        <span className="text-sm font-black">{ws.label}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-white/80 border border-current/20">
+                          {ws.pointRange}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-medium leading-snug mt-1 opacity-95">
+                        {ws.action}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Policy Overrides & Improvement (Bottom of Reference Card) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-[#f0ebe0]">
+                <div className="p-3 bg-[#f0f9f3] rounded-2xl border border-[#bbf7d0] space-y-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-extrabold text-[#166534] flex items-center gap-1.5">
+                      <span>🌟 Improvement Matters</span>
+                    </div>
+                    <span className="text-[10px] bg-[#dcfce7] text-[#166534] px-2 py-0.5 rounded-full font-extrabold border border-[#86efac]">
+                      -1 Point
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] text-[#14532d] leading-relaxed">
+                    6 consecutive program weeks without points + demonstrated improvement allows <strong>-1 point deduction</strong> (leader approval).
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#fef2f2] rounded-2xl border border-[#fecaca] space-y-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-extrabold text-[#991b1b] flex items-center gap-1.5">
+                      <span>🚨 Misconduct Override</span>
+                    </div>
+                    <span className="text-[10px] bg-[#fee2e2] text-[#991b1b] px-2 py-0.5 rounded-full font-extrabold border border-[#fca5a5]">
+                      Immediate Escalation
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] text-[#7f1d1d] leading-relaxed">
+                    Severe misconduct (explicit content, violence, major safety violation) bypasses standard steps directly to <strong>Removal Review</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Interactive "How to Take Points" Infraction Catalog */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                    📖 Point Assignment Catalog & Presets
+                  </h3>
+                  <p className="text-[10px] text-[#66736c]">
+                    Tap categories to find exact point amounts for any situation
+                  </p>
+                </div>
+                <span className="scout-pill text-[10px] font-bold">
+                  {INFRACTION_PRESETS.length} Rules
+                </span>
+              </div>
+
+              {/* Category Filter Tabs */}
+              <div className="tabs pb-1 flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => setGuideCategoryTab('ALL')}
+                  className={`tab text-[11px] py-1 px-2.5 ${guideCategoryTab === 'ALL' ? 'on' : ''}`}
+                >
+                  All Rules ({INFRACTION_PRESETS.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGuideCategoryTab('BEHAVIOR')}
+                  className={`tab text-[11px] py-1 px-2.5 ${guideCategoryTab === 'BEHAVIOR' ? 'on' : ''}`}
+                >
+                  🏃 Behavior (1–10 pts)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGuideCategoryTab('DEVICES')}
+                  className={`tab text-[11px] py-1 px-2.5 ${guideCategoryTab === 'DEVICES' ? 'on' : ''}`}
+                >
+                  📱 Devices (2–10 pts)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGuideCategoryTab('ATTENDANCE')}
+                  className={`tab text-[11px] py-1 px-2.5 ${guideCategoryTab === 'ATTENDANCE' ? 'on' : ''}`}
+                >
+                  ⏰ Attendance (0.5–2 pts)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGuideCategoryTab('IMPROVEMENT')}
+                  className={`tab text-[11px] py-1 px-2.5 ${guideCategoryTab === 'IMPROVEMENT' ? 'on' : ''}`}
+                >
+                  🌟 Growth (-1 pt)
+                </button>
+              </div>
+
+              {/* Search Bar for rules */}
+              <input
+                type="text"
+                placeholder="🔍 Search rule or infraction (e.g. phone, disruption, fighting, late)..."
+                value={guideSearch}
+                onChange={(e) => setGuideSearch(e.target.value)}
+                className="w-full px-3 py-2 border border-[#ccc] rounded-xl text-xs bg-white focus:outline-none focus:border-[#123c2d]"
+              />
+
+              {/* List of Infractions */}
+              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {filteredGuidePresets.map((preset) => (
+                  <div
+                    key={preset.id}
+                    className="p-3 rounded-xl border border-[#ded9cc] bg-white space-y-1.5 shadow-2xs hover:border-[#123c2d] transition"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-md font-extrabold text-[11px] ${
+                          preset.points < 0
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : preset.points >= 6
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                            : preset.points >= 3
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                        }`}>
+                          {preset.points > 0 ? `+${preset.points} Pts` : `${preset.points} Pt`}
+                        </span>
+                        <span className="text-xs font-bold text-[#17201c]">
+                          {preset.title}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#f4eee0] text-[#8a6514] border border-[#e8ddc4] flex-shrink-0">
+                        {preset.tier}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#66736c] leading-relaxed pl-1">
+                      {preset.description}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Section 3: Interactive Point Simulator & Calculator */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🧮</span>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                      Interactive Point Simulator
+                    </h3>
+                    <p className="text-[10px] text-[#66736c]">
+                      Test any point scenario to see warning escalation in real-time
+                    </p>
+                  </div>
+                </div>
+                <span className="scout-pill-gold text-[10px] font-bold">Simulator</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-[#17201c] block mb-1">
+                    Current Scout Points: <strong>{simCurrentPoints} pts</strong> ({getScoutWarningStage(simCurrentPoints).label})
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="12"
+                    step="0.5"
+                    value={simCurrentPoints}
+                    onChange={(e) => setSimCurrentPoints(parseFloat(e.target.value))}
+                    className="w-full accent-[#123c2d] cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[9.5px] text-[#8a8f8c] font-bold px-0.5">
+                    <span>0 pts (Coaching)</span>
+                    <span>3 pts (1st Warn)</span>
+                    <span>5 pts (Parent)</span>
+                    <span>7 pts (Prob)</span>
+                    <span>10+ pts</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-[#17201c] block mb-1">
+                    Select Infraction to Simulate:
+                  </label>
+                  <select
+                    value={simSelectedPresetId}
+                    onChange={(e) => setSimSelectedPresetId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-[#ccc] rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#123c2d]"
+                  >
+                    {INFRACTION_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.points > 0 ? `+${p.points}` : p.points} pts — {p.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Simulator Result Box */}
+              {(() => {
+                const selectedPreset = INFRACTION_PRESETS.find(p => p.id === simSelectedPresetId) || INFRACTION_PRESETS[0];
+                const resultPoints = Math.max(0, simCurrentPoints + selectedPreset.points);
+                const oldStage = getScoutWarningStage(simCurrentPoints);
+                const newStage = getScoutWarningStage(resultPoints);
+                const escalated = newStage.level > oldStage.level;
+
+                return (
+                  <div className={`p-3 rounded-xl border space-y-2 ${
+                    escalated ? 'bg-[#fff5f5] border-[#fca5a5]' : 'bg-[#faf8f2] border-[#ede8dc]'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-bold text-[#17201c] flex items-center gap-2">
+                        <span>{simCurrentPoints} pts ({oldStage.label})</span>
+                        <span>➔</span>
+                        <span className="text-sm font-black text-[#123c2d]">
+                          {resultPoints} pts ({newStage.label})
+                        </span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${newStage.badgeClass}`}>
+                        {newStage.icon} {newStage.label}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-[#66736c] space-y-1">
+                      <div><strong>Action Required:</strong> {newStage.action}</div>
+                      {escalated && (
+                        <div className="text-[#991b1b] font-bold text-[10.5px]">
+                          ⚠️ Warning level increased from Level {oldStage.level} ({oldStage.label}) to Level {newStage.level} ({newStage.label})!
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Section 4: Leader Code of Conduct & Best Practices */}
+            <div className="scout-card p-3 space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                🛡️ Leader Principles & Protocol
+              </h3>
+              <div className="text-xs text-[#66736c] space-y-1.5 pl-1 leading-relaxed">
+                <div>• <strong>Counsel First:</strong> The goal of Dhulfiqār scouting is growth, character building, and Islamic discipline.</div>
+                <div>• <strong>Objective Logging:</strong> State specific observable actions in notes, avoiding vague language.</div>
+                <div>• <strong>Partner with Parents:</strong> At 5 points (Parent Conference), immediately coordinate with the family for positive reinforcement.</div>
+                <div>• <strong>Acknowledge Improvement:</strong> Consistently award -1 point after 6 clean weeks to reward perseverance.</div>
+              </div>
+            </div>
+          </main>
+        )}
+
+        {/* TAB 4: PATROL ROSTER */}
         {activeTab === 'roster' && (
           <main className="p-4 space-y-3.5">
             <div className="scout-card space-y-2.5">
@@ -1724,12 +2111,21 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleExportPatrolExcel(selectedGrade !== 'All Grades' ? selectedGrade : undefined)}
+                    disabled={isExportingExcel}
+                    className="scout-btn-outline text-xs py-1 px-2 flex items-center gap-1 shadow-xs cursor-pointer text-[#123c2d]"
+                    title="Download live patrol progress and attendance report (.xlsx)"
+                  >
+                    <span>📊</span> Export
+                  </button>
                   {isAdmin && (
                     <button
                       type="button"
                       onClick={() => handleOpenAddScout(selectedGrade)}
-                      className="scout-btn-primary text-xs py-1 px-2.5 flex items-center gap-1 shadow-xs cursor-pointer"
+                      className="scout-btn-primary text-xs py-1 px-2 flex items-center gap-1 shadow-xs cursor-pointer"
                     >
                       <span>➕</span> Add Scout
                     </button>
@@ -2156,48 +2552,48 @@ export default function App() {
               </form>
             </div>
 
-            {/* Database State & Backup Center */}
-            <div className="scout-card space-y-3">
-              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">💾</span>
-                  <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
-                      Database State & Backup Center
-                    </h3>
-                    <p className="text-[10px] text-[#66736c]">All roster edits, ṭalāʾiʿ names & points auto-saved</p>
+            {/* Database State & Backup Center (Admin & Troop Leader Only) */}
+            {isAdmin && (
+              <div className="scout-card space-y-3">
+                <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">💾</span>
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                        Database State & Backup Center
+                      </h3>
+                      <p className="text-[10px] text-[#66736c]">All roster edits, ṭalāʾiʿ names & points auto-saved</p>
+                    </div>
+                  </div>
+                  <span className="scout-pill text-[10px] font-bold">
+                    {scouts.length} Scouts Saved
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-[#f5f9f6] border border-[#d2e8db] rounded-xl space-y-1.5 text-xs text-[#123c2d]">
+                  <div className="flex items-center justify-between">
+                    <span>🟢 Active Database Cache:</span>
+                    <strong>{scouts.length} Registered Scouts</strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>🛡️ Accountability Logs:</span>
+                    <strong>{accountabilityLogs.length} Records</strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>📱 Offline Persistence:</span>
+                    <strong className="text-emerald-700">Active (Auto-Saved)</strong>
                   </div>
                 </div>
-                <span className="scout-pill text-[10px] font-bold">
-                  {scouts.length} Scouts Saved
-                </span>
-              </div>
 
-              <div className="p-2.5 bg-[#f5f9f6] border border-[#d2e8db] rounded-xl space-y-1.5 text-xs text-[#123c2d]">
-                <div className="flex items-center justify-between">
-                  <span>🟢 Active Database Cache:</span>
-                  <strong>{scouts.length} Registered Scouts</strong>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>🛡️ Accountability Logs:</span>
-                  <strong>{accountabilityLogs.length} Records</strong>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>📱 Offline Persistence:</span>
-                  <strong className="text-emerald-700">Active (Auto-Saved)</strong>
-                </div>
-              </div>
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleExportDatabaseJson}
+                    className="w-full py-2.5 bg-[#123c2d] hover:bg-[#0e2f23] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                  >
+                    <span>📥</span> Download Full Database Backup (.JSON)
+                  </button>
 
-              <div className="space-y-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleExportDatabaseJson}
-                  className="w-full py-2.5 bg-[#123c2d] hover:bg-[#0e2f23] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
-                >
-                  <span>📥</span> Download Full Database Backup (.JSON)
-                </button>
-
-                {isAdmin && (
                   <label className="w-full py-2 bg-white hover:bg-[#faf8f2] text-[#123c2d] border border-[#123c2d] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition">
                     <span>📤</span> Restore Database from Backup (.JSON)
                     <input
@@ -2207,33 +2603,151 @@ export default function App() {
                       className="hidden"
                     />
                   </label>
-                )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Excel & CSV Downloads */}
-            <div className="scout-card space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">Credentials & Spreadsheets</h3>
-              <p className="text-[11px] text-[#66736c]">Download full roster and account logins</p>
+            {/* Live Patrol Progress & Attendance Report (Available to ALL Leaders & Admin) */}
+            <div className="scout-card space-y-3">
+              <div className="flex items-center justify-between border-b border-[#f0ebe0] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📊</span>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">
+                      Live Patrol Progress & Attendance
+                    </h3>
+                    <p className="text-[10px] text-[#66736c]">
+                      Download real-time patrol records, attendance matrix & behavior points as of right now
+                    </p>
+                  </div>
+                </div>
+                <span className="scout-pill text-[10px] font-bold">
+                  Live Snapshot
+                </span>
+              </div>
+
+              {/* Admin / Troop Leader Patrol Scope Selector */}
+              {isAdmin && (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-[#17201c] flex items-center justify-between">
+                    <span>Choose Export Scope:</span>
+                    <span className="text-[10px] text-[#8a6514] font-normal">
+                      {exportGradeSelection === 'All Units' ? 'Full Troop Master' : 'Single Patrol'}
+                    </span>
+                  </label>
+                  <select
+                    value={exportGradeSelection}
+                    onChange={(e) => setExportGradeSelection(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-[#ccc] rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#123c2d]"
+                  >
+                    <option value="All Units">🌟 All Units Master Report (124 Scouts / 11 Ṭalāʾiʿ)</option>
+                    {ALL_GRADES.map((g) => {
+                      const t = getTaliahForGrade(g, customTaliahNames);
+                      return (
+                        <option key={g} value={g}>
+                          {g} — {t.taliahName} ({t.taliahRank})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
+
+              {/* Live Snapshot Details Box */}
+              <div className="p-2.5 bg-[#f5f9f6] border border-[#d2e8db] rounded-xl space-y-1.5 text-xs text-[#123c2d]">
+                <div className="flex items-center justify-between">
+                  <span>Selected Patrol:</span>
+                  <strong className="text-[#8a6514] font-bold">
+                    {isAdmin
+                      ? (exportGradeSelection === 'All Units' ? 'All Ṭalāʾiʿ (Full Troop)' : exportGradeSelection)
+                      : `${assignedGradeName} ${userUnitTaliah ? `(${userUnitTaliah.taliahName})` : ''}`
+                    }
+                  </strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Scouts in Report:</span>
+                  <strong>
+                    {isAdmin
+                      ? (exportGradeSelection === 'All Units' ? scouts.length : scouts.filter(s => s.grade === exportGradeSelection).length)
+                      : scouts.filter(s => s.grade === leaderProfile?.assignedGrade).length
+                    } Registered Scouts
+                  </strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Attendance Sessions:</span>
+                  <strong>{FRIDAY_SESSIONS.length} Friday Program Matrix</strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Incident Log History:</span>
+                  <strong>
+                    {isAdmin && exportGradeSelection === 'All Units'
+                      ? accountabilityLogs.length
+                      : accountabilityLogs.filter(l => {
+                          const targetG = isAdmin ? exportGradeSelection : leaderProfile?.assignedGrade;
+                          const s = scouts.find(sc => sc.id === l.scoutId);
+                          return s?.grade === targetG || l.grade === targetG;
+                        }).length
+                    } Recorded Incidents
+                  </strong>
+                </div>
+              </div>
+
+              {/* Action Buttons: Multi-sheet XLSX & CSV */}
               <div className="grid grid-cols-2 gap-2 pt-1">
-                <a
-                  href="/Dhulfiqar_Scouts_Leader_Logins.xlsx"
-                  download="Dhulfiqar_Scouts_Leader_Logins.xlsx"
-                  className="scout-btn-primary text-xs text-center py-2 no-underline"
+                <button
+                  type="button"
+                  onClick={() => handleExportPatrolExcel()}
+                  disabled={isExportingExcel}
+                  className="scout-btn-primary text-xs text-center py-2.5 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
                 >
-                  📊 Download .XLSX
-                </a>
-                <a
-                  href="/Dhulfiqar_Scouts_Leader_Logins.csv"
-                  download="Dhulfiqar_Scouts_Leader_Logins.csv"
-                  className="scout-btn-outline text-xs text-center py-2 no-underline"
+                  <span>📊</span> {isExportingExcel ? 'Generating...' : 'Download .XLSX'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportPatrolCsv()}
+                  className="scout-btn-outline text-xs text-center py-2.5 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  📑 Download .CSV
-                </a>
+                  <span>📑</span> Download .CSV
+                </button>
+              </div>
+
+              <div className="p-2 bg-[#fdfaf2] rounded-lg border border-[#e8ddc4] text-[10.5px] text-[#8a6514] space-y-0.5">
+                <div className="font-bold flex items-center gap-1">
+                  <span>💡</span> Excel (.XLSX) Workbook includes 3 styled sheets:
+                </div>
+                <div className="pl-4 list-disc text-[10px] text-[#66736c]">
+                  • <strong>Patrol Progress & Points:</strong> Scout IDs, warning stages, and penalty points.<br/>
+                  • <strong>Session Attendance Matrix:</strong> Complete Friday-by-Friday matrix with rates.<br/>
+                  • <strong>Incident & Duty Logs:</strong> Full audit ledger with timestamps & notes.
+                </div>
               </div>
             </div>
 
-            {/* Admin Controls */}
+            {/* Static Credentials & Default Logins (Admin Only) */}
+            {isAdmin && (
+              <div className="scout-card space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">Static Leader Credentials Spreadsheets</h3>
+                <p className="text-[11px] text-[#66736c]">Download default leader credentials and account roster</p>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <a
+                    href="/Dhulfiqar_Scouts_Leader_Logins.xlsx"
+                    download="Dhulfiqar_Scouts_Leader_Logins.xlsx"
+                    className="scout-btn-outline text-xs text-center py-2 no-underline text-[#123c2d]"
+                  >
+                    📊 Master Logins .XLSX
+                  </a>
+                  <a
+                    href="/Dhulfiqar_Scouts_Leader_Logins.csv"
+                    download="Dhulfiqar_Scouts_Leader_Logins.csv"
+                    className="scout-btn-outline text-xs text-center py-2 no-underline text-[#123c2d]"
+                  >
+                    📑 Master Logins .CSV
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Admin Controls (Admin & Troop Leader Only) */}
             {isAdmin && (
               <div className="scout-card space-y-2">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[#17201c]">👑 Admin Management Tools</h3>
@@ -2287,6 +2801,14 @@ export default function App() {
           >
             <span className="nav-icon text-lg">🛡️</span>
             <span>Duties</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('pointguide')}
+            className={`scout-nav-item ${activeTab === 'pointguide' ? 'on' : ''}`}
+          >
+            <span className="nav-icon text-lg">⚖️</span>
+            <span>Guide</span>
           </button>
           <button
             type="button"

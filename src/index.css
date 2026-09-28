@@ -198,20 +198,20 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 72px;
+  height: 70px;
   background: white;
   border-top: 1px solid #ded9cc;
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 6px 4px 12px 4px;
+  padding: 4px 2px 10px 2px;
   z-index: 30;
 }
 
 .scout-nav-item {
   border: 0;
   background: none;
-  font-size: 10.5px;
+  font-size: 10px;
   color: #65706a;
   font-weight: 700;
   display: flex;
@@ -219,9 +219,12 @@ body {
   align-items: center;
   gap: 2px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 2px;
   border-radius: 10px;
   transition: all 0.15s ease;
+  flex: 1;
+  text-align: center;
+  min-width: 0;
 }
 
 .scout-nav-item.on {
@@ -229,7 +232,7 @@ body {
 }
 
 .scout-nav-item.on .nav-icon {
-  transform: scale(1.1);
+  transform: scale(1.12);
   color: var(--g);
 }
 
