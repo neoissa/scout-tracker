@@ -111,11 +111,11 @@ The app implements strict role-based access control (RBAC):
    • Troop-Wide Master Reports                           • Download Patrol Progress Report
 ```
 
-### 🔒 Secure Leader Authentication & Account Isolation
-* **Individual Profiles:** Every leader has their own isolated profile and credentials.
-* **No In-App Quick Switching:** Unauthorized profile switching inside the app is strictly prohibited and disabled.
-* **Switching Accounts:** To switch to a different leader or unit, the leader must tap **`🚪 Logout`** (located in the top header or in the **⚙️ Portal** tab). This redirects to the secure Login screen where the leader's specific username and password must be entered.
-* **Password Self-Management:** Leaders can change their personal password at any time in the **⚙️ Portal** tab.
+### 🔒 Leader Authentication & Smart Login Flow
+* **Account Dropdown Selector:** On the Login page, leaders can quickly select their account from the categorized dropdown (Admin, Lions KG, Tigers 1st, Wolf 2nd, etc.).
+* **Default Initial Password:** Accounts that have not updated their password yet can use the standard default password (`scouts2026`).
+* **Enforced Custom Password:** Whenever a leader updates their password from the **⚙️ Portal** tab, the login screen automatically detects the custom password, marks the field with `🔒 Custom Password Required`, and **requires the leader to type their custom password** to authenticate.
+* **Switching Accounts:** To switch to a different leader or unit, the leader must tap **`🚪 Logout`** (in the top header or in the **⚙️ Portal** tab). This redirects to the login screen where the account can be chosen and password verified.
 
 ---
 
