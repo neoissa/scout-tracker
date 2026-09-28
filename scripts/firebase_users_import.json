@@ -1,0 +1,172 @@
+{
+  "users": [
+    {
+      "localId": "user_leader",
+      "email": "leader@dhulfiqarscouts.org",
+      "displayName": "Troop Leader",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"leader\",\"assignedGrade\":\"ALL\",\"role\":\"ADMIN\"}"
+    },
+    {
+      "localId": "user_admin",
+      "email": "admin@dhulfiqarscouts.org",
+      "displayName": "Troop Admin",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"admin\",\"assignedGrade\":\"ALL\",\"role\":\"ADMIN\"}"
+    },
+    {
+      "localId": "user_bdabaja",
+      "email": "bdabaja@dhulfiqarscouts.org",
+      "displayName": "Bilal Dabaja",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"bdabaja\",\"assignedGrade\":\"Kindergarten\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_nchamseddine",
+      "email": "nchamseddine@dhulfiqarscouts.org",
+      "displayName": "Nader Chamseddine",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"nchamseddine\",\"assignedGrade\":\"1st Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_msoueidan",
+      "email": "msoueidan@dhulfiqarscouts.org",
+      "displayName": "Mohamad Ali Soueidan",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"msoueidan\",\"assignedGrade\":\"1st Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_jhazime",
+      "email": "jhazime@dhulfiqarscouts.org",
+      "displayName": "Jawad Hazime",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"jhazime\",\"assignedGrade\":\"2nd Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_amohsen",
+      "email": "amohsen@dhulfiqarscouts.org",
+      "displayName": "Ahmad Mohsen",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"amohsen\",\"assignedGrade\":\"2nd Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_hyahfoufi",
+      "email": "hyahfoufi@dhulfiqarscouts.org",
+      "displayName": "Hussein Yahfoufi",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"hyahfoufi\",\"assignedGrade\":\"3rd Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_bsaleh",
+      "email": "bsaleh@dhulfiqarscouts.org",
+      "displayName": "Basel Saleh",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"bsaleh\",\"assignedGrade\":\"3rd Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_aayash",
+      "email": "aayash@dhulfiqarscouts.org",
+      "displayName": "Ayman Ayash",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"aayash\",\"assignedGrade\":\"4th Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_mhammoud",
+      "email": "mhammoud@dhulfiqarscouts.org",
+      "displayName": "Mahdi Hammoud",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"mhammoud\",\"assignedGrade\":\"4th Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_afardous",
+      "email": "afardous@dhulfiqarscouts.org",
+      "displayName": "Abbas Fardous",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"afardous\",\"assignedGrade\":\"4th Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_tsafwan",
+      "email": "tsafwan@dhulfiqarscouts.org",
+      "displayName": "Tamer Safwan",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"tsafwan\",\"assignedGrade\":\"5th Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_mmussa",
+      "email": "mmussa@dhulfiqarscouts.org",
+      "displayName": "Mohamed Hussein Mussa",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"mmussa\",\"assignedGrade\":\"5th Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_mhaidarahmad",
+      "email": "mhaidarahmad@dhulfiqarscouts.org",
+      "displayName": "Mohammad Haidar-Ahmad",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"mhaidarahmad\",\"assignedGrade\":\"5th Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_mjalloul",
+      "email": "mjalloul@dhulfiqarscouts.org",
+      "displayName": "Mohamad Jalloul",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"mjalloul\",\"assignedGrade\":\"6th Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_hberro",
+      "email": "hberro@dhulfiqarscouts.org",
+      "displayName": "Hamze Berro",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"hberro\",\"assignedGrade\":\"6th Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_hissa",
+      "email": "hissa@dhulfiqarscouts.org",
+      "displayName": "Hassan Issa",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"hissa\",\"assignedGrade\":\"7th Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_ialwishah",
+      "email": "ialwishah@dhulfiqarscouts.org",
+      "displayName": "Ibrahim Alwishah",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"ialwishah\",\"assignedGrade\":\"7th Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_hyahfoufi8",
+      "email": "hyahfoufi8@dhulfiqarscouts.org",
+      "displayName": "Hasan Yahfoufi",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"hyahfoufi8\",\"assignedGrade\":\"8th Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_ihassan",
+      "email": "ihassan@dhulfiqarscouts.org",
+      "displayName": "Ibrahim Hassan",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"ihassan\",\"assignedGrade\":\"8th Grade\",\"role\":\"ASST_LEADER\"}"
+    },
+    {
+      "localId": "user_mmourtada",
+      "email": "mmourtada@dhulfiqarscouts.org",
+      "displayName": "Mustapha Mourtada",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"mmourtada\",\"assignedGrade\":\"9th Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_mchoucair",
+      "email": "mchoucair@dhulfiqarscouts.org",
+      "displayName": "Mustapha Choucair",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"mchoucair\",\"assignedGrade\":\"10th / 11th Grade\",\"role\":\"LEADER\"}"
+    },
+    {
+      "localId": "user_aharajli",
+      "email": "aharajli@dhulfiqarscouts.org",
+      "displayName": "Ali Harajli",
+      "password": "scouts2026",
+      "customAttributes": "{\"username\":\"aharajli\",\"assignedGrade\":\"10th / 11th Grade\",\"role\":\"LEADER\"}"
+    }
+  ]
+}
