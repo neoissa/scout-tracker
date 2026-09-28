@@ -1180,14 +1180,24 @@ export default function App() {
               </div>
             </div>
 
-            {/* Role Tag */}
-            <span className={`px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${
-              isAdmin 
-                ? 'bg-amber-100/20 text-[#e6d7a8] border-[#e6d7a8]/40' 
-                : 'bg-emerald-950/60 text-emerald-200 border-emerald-500/30'
-            }`}>
-              {isAdmin ? '👑 Admin' : leaderProfile?.role === 'ASST_LEADER' ? '🤝 Asst' : '⭐ Qaid'}
-            </span>
+            {/* Role Tag & Sign Out */}
+            <div className="flex items-center gap-1.5">
+              <span className={`px-2.5 py-1 rounded-full text-[10.5px] font-bold border ${
+                isAdmin 
+                  ? 'bg-amber-100/20 text-[#e6d7a8] border-[#e6d7a8]/40' 
+                  : 'bg-emerald-950/60 text-emerald-200 border-emerald-500/30'
+              }`}>
+                {isAdmin ? '👑 Admin' : leaderProfile?.role === 'ASST_LEADER' ? '🤝 Asst' : '⭐ Qaid'}
+              </span>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                title="Sign Out to Switch Leader"
+                className="text-[10px] font-bold text-white/80 hover:text-white bg-black/25 hover:bg-black/40 border border-white/20 px-2 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer"
+              >
+                <span>🚪</span> Logout
+              </button>
+            </div>
           </div>
 
           {/* Subtitle with Active Qaid & Assigned Unit */}
@@ -1201,29 +1211,6 @@ export default function App() {
             </span>
           </div>
         </header>
-
-        {/* Quick Switcher Bar */}
-        <div className="px-4 pt-3 pb-1">
-          <div className="p-2.5 bg-[#f0ebe0] border border-[#ded9cc] rounded-xl flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold text-[#123c2d] flex items-center gap-1">
-              <span>⚡</span> Qaid:
-            </span>
-            <select
-              value={leaderProfile?.username || currentUserId}
-              onChange={(e) => handleLocalLogin(e.target.value)}
-              className="text-xs font-semibold text-[#17201c] bg-white border border-[#ccc5b6] rounded-lg p-1.5 focus:ring-1 focus:ring-[#123c2d] outline-none cursor-pointer flex-1 max-w-[280px]"
-            >
-              {LEADER_PROFILES.map((p) => {
-                const t = p.assignedGrade !== 'ALL' ? getTaliahForGrade(p.assignedGrade, customTaliahNames) : null;
-                return (
-                  <option key={p.username} value={p.username}>
-                    {p.role === 'ADMIN' ? '👑' : p.role === 'ASST_LEADER' ? '🤝' : '⭐'} {p.name} (@{p.username}) — {t ? `${t.taliahRank} (${t.taliahName})` : 'All Units'}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-        </div>
 
         {/* TAB 1: ATTENDANCE CHECK-IN */}
         {activeTab === 'checkin' && (
@@ -2882,9 +2869,9 @@ export default function App() {
             <button
               type="button"
               onClick={handleSignOut}
-              className="w-full py-2.5 bg-rose-50 border border-rose-200 text-rose-800 hover:bg-rose-100 rounded-xl text-xs font-bold transition cursor-pointer"
+              className="w-full py-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-2 shadow-2xs"
             >
-              Sign Out of Portal
+              <span>🚪</span> Sign Out / Switch Leader Account
             </button>
           </main>
         )}

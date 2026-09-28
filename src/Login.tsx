@@ -1,37 +1,43 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, isFirebaseConfigured } from './firebase';
-import { LEADER_PROFILES, findLeaderProfile } from './config/leaderRoles';
+import { findLeaderProfile } from './config/leaderRoles';
 import { getTaliahForGrade } from './config/taliahConfig';
-import { getUserPassword, verifyUserPassword, hasCustomPassword } from './config/authConfig';
+import { verifyUserPassword } from './config/authConfig';
 
 interface LoginProps {
   onLocalLogin?: (usernameOrEmail: string) => void;
 }
 
 export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
-  const [identifier, setIdentifier] = useState('leader');
-  const [password, setPassword] = useState(() => getUserPassword('leader'));
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // When identifier changes via select or input, update default password
-  useEffect(() => {
-    const expected = getUserPassword(identifier);
-    setPassword(expected);
-  }, [identifier]);
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setErrorMsg(null);
 
-    const cleanInput = identifier.trim().toLowerCase();
+    const cleanInput = identifier.trim().toLowerCase().split('@')[0];
+    if (!cleanInput) {
+      setErrorMsg('Please enter your username or ID.');
+      return;
+    }
+
+    if (!password) {
+      setErrorMsg('Please enter your password.');
+      return;
+    }
+
+    setLoading(true);
+
     const isLocalPasswordValid = verifyUserPassword(cleanInput, password);
 
     if (!isFirebaseConfigured || !auth) {
-      // Local / Offline mode
-      if (!isLocalPasswordValid && password !== 'scouts2026') {
+      // Local / Offline authentication mode
+      if (!isLocalPasswordValid) {
         setErrorMsg(`Incorrect password for @${cleanInput}. Please enter your valid password.`);
         setLoading(false);
         return;
@@ -49,31 +55,23 @@ export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
         : `${cleanInput}@dhulfiqarscouts.org`;
 
       await signInWithEmailAndPassword(auth, authEmail, password);
+      if (onLocalLogin) {
+        onLocalLogin(cleanInput);
+      }
     } catch (err: any) {
-      console.warn('Firebase login error, offering local fallback:', err);
+      console.warn('Firebase login check, checking local credential store:', err);
       if (isLocalPasswordValid && onLocalLogin) {
         onLocalLogin(cleanInput);
         setLoading(false);
         return;
       }
-      setErrorMsg(
-        err?.message?.includes('invalid-credential')
-          ? 'Invalid username or password.'
-          : 'Authentication failed. Please check credentials.'
-      );
+      setErrorMsg('Invalid username or password. Please verify your credentials.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleQuickDemo = (selectedUsername?: string) => {
-    const target = (selectedUsername || identifier).trim().toLowerCase();
-    if (onLocalLogin) {
-      onLocalLogin(target);
-    }
-  };
-
-  const currentProfile = findLeaderProfile(identifier);
+  const currentProfile = identifier.trim() ? findLeaderProfile(identifier.trim().toLowerCase()) : null;
   const taliahInfo = currentProfile && currentProfile.assignedGrade !== 'ALL' 
     ? getTaliahForGrade(currentProfile.assignedGrade) 
     : null;
@@ -91,123 +89,45 @@ export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
             />
             <div>
               <div className="scout-brand">Dhulfiqār Scout Tracker</div>
-              <h1 className="scout-title text-2xl font-extrabold text-white">Leader Portal</h1>
+              <h1 className="scout-title text-2xl font-extrabold text-white">Leader Sign In</h1>
             </div>
           </div>
-          <p className="scout-sub mt-2">Sign in to take unit attendance & manage ṭalīʿah</p>
+          <p className="scout-sub mt-2">Enter your credentials to access your ṭalīʿah portal</p>
         </header>
 
         <main className="p-4 sm:p-5 space-y-4">
-          {/* Quick Switcher Card */}
-          <div className="scout-card bg-[#fcfbf7] border-[#d8d3c5] space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-[#66736c]">
-                ⚡ Quick Select Account
-              </label>
-              <span className="text-[10px] font-bold scout-pill-gold px-2 py-0.5 rounded-full">
-                {LEADER_PROFILES.length} Profiles
-              </span>
-            </div>
-            <select
-              value={currentProfile?.username || identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              className="w-full text-xs font-semibold text-[#17201c] bg-white border border-[#ccc5b6] rounded-xl p-2.5 focus:ring-2 focus:ring-[#123c2d] outline-none shadow-xs cursor-pointer"
-            >
-              <optgroup label="👑 Administration">
-                <option value="leader">👑 Troop Leader (@leader) — All Units</option>
-                <option value="admin">👑 Troop Admin (@admin) — All Units</option>
-              </optgroup>
-              <optgroup label="⭐ Kindergarten (Lions - KG)">
-                <option value="bdabaja">⭐ Bilal Dabaja (@bdabaja) — Ṭalīʿat al-Mahdi (ʿaj)</option>
-              </optgroup>
-              <optgroup label="⭐ 1st Grade (Tigers - 1st)">
-                <option value="nchamseddine">⭐ Nader Chamseddine (@nchamseddine) — Ṭalīʿat al-Muṣṭafā (ṣ)</option>
-                <option value="msoueidan">🤝 Mohamad Ali Soueidan (@msoueidan) [Asst]</option>
-              </optgroup>
-              <optgroup label="⭐ 2nd Grade (Wolf - 2nd)">
-                <option value="jhazime">⭐ Jawad Hazime (@jhazime) — Ṭalīʿat aṣ-Ṣādiq (ʿa)</option>
-                <option value="amohsen">🤝 Ahmad Mohsen (@amohsen) [Asst]</option>
-              </optgroup>
-              <optgroup label="⭐ 3rd Grade (Bear - 3rd)">
-                <option value="hyahfoufi">⭐ Hussein Yahfoufi (@hyahfoufi) — Ṭalīʿat ar-Riḍā (ʿa)</option>
-                <option value="bsaleh">🤝 Basel Saleh (@bsaleh) [Asst]</option>
-              </optgroup>
-              <optgroup label="⭐ 4th Grade (Webelos - 4th)">
-                <option value="aayash">⭐ Ayman Ayash (@aayash) — Ṭalīʿat TBD</option>
-                <option value="mhammoud">🤝 Mahdi Hammoud (@mhammoud) [Asst]</option>
-                <option value="afardous">🤝 Abbas Fardous (@afardous) [Asst]</option>
-              </optgroup>
-              <optgroup label="⭐ 5th Grade (Arrow of Light - 5th)">
-                <option value="tsafwan">⭐ Tamer Safwan (@tsafwan) — Ṭalīʿat Amīr al-Muʾminīn (ʿa)</option>
-                <option value="mmussa">🤝 Mohamed Hussein Mussa (@mmussa) [Asst]</option>
-                <option value="mhaidarahmad">🤝 Mohammad Haidar-Ahmad (@mhaidarahmad) [Asst]</option>
-              </optgroup>
-              <optgroup label="⭐ 6th Grade (Patrol 1 - 6th)">
-                <option value="mjalloul">⭐ Mohamad Jalloul (@mjalloul) — Ṭalīʿat ʿIshāq al-Ḥusayn (ʿa)</option>
-                <option value="hberro">🤝 Hamze Berro (@hberro) [Asst]</option>
-              </optgroup>
-              <optgroup label="⭐ 7th Grade (Patrol 2 - 6th/7th)">
-                <option value="hissa">⭐ Hassan Issa (@hissa) — Ṭalīʿat Abū al-Faḍl al-ʿAbbās</option>
-                <option value="ialwishah">🤝 Ibrahim Alwishah (@ialwishah) [Asst]</option>
-              </optgroup>
-              <optgroup label="⭐ 8th Grade (Patrol 3 - 8th)">
-                <option value="hyahfoufi8">⭐ Hasan Yahfoufi (@hyahfoufi8) — Ṭalīʿat al-Bāqir (ʿa)</option>
-                <option value="ihassan">🤝 Ibrahim Hassan (@ihassan) [Asst]</option>
-              </optgroup>
-              <optgroup label="⭐ 9th Grade (Patrol 4 - 9th)">
-                <option value="mmourtada">⭐ Mustapha Mourtada (@mmourtada) — Ṭalīʿat Asadullāh (ʿa)</option>
-              </optgroup>
-              <optgroup label="⭐ 10th / 11th Grade (Patrol 5 - 10th/11th)">
-                <option value="mchoucair">⭐ Mustapha Choucair (@mchoucair) — Ṭalīʿat Abā ʿAbdillāh (ʿa)</option>
-                <option value="aharajli">⭐ Ali Harajli (@aharajli) — Ṭalīʿat Abā ʿAbdillāh (ʿa)</option>
-              </optgroup>
-            </select>
-          </div>
-
-          {!isFirebaseConfigured && (
-            <div className="scout-card bg-[#fffcf2] border-[#f1e6b8] p-3 text-xs space-y-1">
-              <div className="flex items-center gap-1.5 font-bold text-[#8a6514]">
-                <span>🏕️</span> Local Preview Mode Active
-              </div>
-              <p className="text-[11px] text-[#735410]">
-                Select any leader profile above to sign in and take attendance.
-              </p>
-            </div>
-          )}
-
           {errorMsg && (
-            <div className="scout-card bg-[#fff5f5] border-[#fecaca] p-3 text-xs text-[#991b1b] space-y-2">
-              <div>{errorMsg}</div>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo()}
-                className="px-3 py-1.5 bg-[#991b1b] text-white rounded-lg text-xs font-semibold hover:bg-[#7f1d1d] transition cursor-pointer"
-              >
-                Continue in Local Demo Mode →
-              </button>
+            <div className="scout-card bg-[#fff5f5] border-[#fecaca] p-3 text-xs text-[#991b1b] flex items-center gap-2">
+              <span className="text-base">⚠️</span>
+              <span className="font-semibold">{errorMsg}</span>
             </div>
           )}
 
-          {/* Login Form */}
+          {/* Secure Login Form */}
           <form onSubmit={handleLogin} className="scout-card space-y-3.5">
             <div>
-              <label className="block text-xs font-bold text-[#17201c] mb-1">Username / ID</label>
+              <label className="block text-xs font-bold text-[#17201c] mb-1">
+                Leader Username / ID <span className="text-rose-600">*</span>
+              </label>
               <input
                 type="text"
                 required
+                autoCapitalize="none"
+                autoCorrect="off"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full px-3 py-2.5 border border-[#ccc] rounded-xl text-xs sm:text-sm bg-white focus:outline-none focus:border-[#123c2d] focus:ring-1 focus:ring-[#123c2d]"
-                placeholder="e.g. bdabaja, msoueidan, leader"
+                placeholder="e.g. bdabaja, msoueidan, mjalloul, admin"
               />
+
               {currentProfile && (
-                <div className="mt-2 p-2 bg-[#f4f1e8] rounded-xl border border-[#ded9cc] text-[11px] text-[#66736c] space-y-1">
+                <div className="mt-2 p-2.5 bg-[#f4f1e8] rounded-xl border border-[#ded9cc] text-[11px] text-[#66736c] space-y-1">
                   <div className="flex items-center justify-between">
                     <span>
-                      User: <strong className="text-[#123c2d]">{currentProfile.name}</strong>
+                      Leader: <strong className="text-[#123c2d]">{currentProfile.name}</strong>
                     </span>
                     <span className="scout-pill text-[10px]">
-                      {currentProfile.assignedGrade === 'ALL' ? 'All Units' : currentProfile.assignedGrade}
+                      {currentProfile.assignedGrade === 'ALL' ? '👑 All Units' : currentProfile.assignedGrade}
                     </span>
                   </div>
                   {taliahInfo && (
@@ -223,47 +143,53 @@ export const Login: React.FC<LoginProps> = ({ onLocalLogin }) => {
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-[#17201c]">Password</label>
-                {hasCustomPassword(identifier) && (
-                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full">
-                    ✨ Custom Password Set
-                  </span>
-                )}
+              <label className="block text-xs font-bold text-[#17201c] mb-1">
+                Password <span className="text-rose-600">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3 py-2.5 pr-10 border border-[#ccc] rounded-xl text-xs sm:text-sm bg-white focus:outline-none focus:border-[#123c2d] focus:ring-1 focus:ring-[#123c2d]"
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 text-xs font-bold px-1"
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
               </div>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2.5 border border-[#ccc] rounded-xl text-xs sm:text-sm bg-white focus:outline-none focus:border-[#123c2d] focus:ring-1 focus:ring-[#123c2d]"
-                placeholder="••••••••"
-              />
-              <p className="text-[10px] text-[#8a8f8c] mt-1">
-                {hasCustomPassword(identifier) 
-                  ? <span>Personalized password active for <strong>@{identifier}</strong>.</span>
-                  : <span>Default Password: <strong>scouts2026</strong></span>}
-              </p>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full scout-btn-primary text-sm shadow-md mt-2 flex items-center justify-center gap-2"
+              className="w-full scout-btn-primary text-sm shadow-md mt-3 py-3 flex items-center justify-center gap-2 cursor-pointer font-bold"
             >
-              {loading ? 'Authenticating...' : `Sign In as @${currentProfile?.username || identifier}`}
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Verifying Credentials...</span>
+                </>
+              ) : (
+                <span>Sign In to Scout Tracker →</span>
+              )}
             </button>
           </form>
 
-          {isFirebaseConfigured && (
-            <button
-              type="button"
-              onClick={() => handleQuickDemo()}
-              className="w-full scout-btn-outline text-xs text-center"
-            >
-              Skip & Enter Demo Mode
-            </button>
-          )}
+          {/* Security Notice Card */}
+          <div className="scout-card bg-[#faf8f2] border-[#ded9cc] p-3 text-xs space-y-1.5 text-[#66736c]">
+            <div className="flex items-center gap-1.5 font-bold text-[#123c2d]">
+              <span>🔒</span> Protected Leader Access
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              Each patrol leader and assistant has an individual account with scoped access to their assigned ṭalīʿah. To switch accounts, log out from the <strong>Portal</strong> tab.
+            </p>
+          </div>
         </main>
       </div>
     </div>
