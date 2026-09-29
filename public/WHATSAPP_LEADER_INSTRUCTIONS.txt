@@ -1,0 +1,79 @@
+⚜️ *DHULFIQĀR SCOUT TRACKER — LEADER ONBOARDING & SETUP GUIDE* ⚜️
+
+Salam Alaykum Leaders! 🌲
+
+We are excited to launch the official *Dhulfiqār Scout Tracker* web app for our 2026–2027 scouting year! This portal allows every Qaid and Assistant to take fast weekly attendance, grade duty ceremonies, record scout accountability points, and download live patrol reports directly on mobile.
+
+📲 *OFFICIAL APP LINK:* https://scout-tracker-tau.vercel.app/
+
+---
+
+📱 *STEP 1: INSTALL TO YOUR PHONE'S HOME SCREEN*
+_Please open the link above using your phone’s native browser so it behaves like a native full-screen app:_
+
+🍏 *iPhone / iPad Users (MUST use Apple Safari):*
+1. Open https://scout-tracker-tau.vercel.app/ in *Safari*.
+2. Tap the *Share button* at the bottom bar (square with an arrow pointing up ⬆️).
+3. Scroll down the menu and tap *“Add to Home Screen”* (+).
+4. Tap *Add* in the top-right corner.
+5. You now have the *Dhulfiqār Scouts* emblem icon on your home screen!
+
+🤖 *Android Users (MUST use Google Chrome):*
+1. Open https://scout-tracker-tau.vercel.app/ in *Chrome*.
+2. Tap the *3 dots menu (⋮)* in the top-right corner.
+3. Tap *“Install app”* or *“Add to Home screen”*.
+4. Tap *Install* to confirm.
+
+---
+
+🔑 *STEP 2: HOW TO LOG IN*
+1. Open the app from your home screen.
+2. In the *“Select Leader Account”* dropdown, pick your name and assigned Ṭalīʿah.
+3. Enter the initial default password: *scouts2026*
+4. Tap *Sign In*.
+
+---
+
+🔒 *STEP 3: CHANGE YOUR PASSWORD (MANDATORY FOR PRIVACY)*
+To protect your scout records and Ṭalīʿah data:
+1. Tap the *⚙️ Portal* tab in the bottom navigation bar.
+2. Scroll down to *“Security & Password Management”*.
+3. Enter current password: *scouts2026*
+4. Enter your new secure personal password and tap *Update Password*.
+_(Note: Once updated, next time you open the login page and choose your account, the app will automatically prompt you to type your own private password!)_
+
+---
+
+🧪 *STEP 4: PRACTICE USING TEST 1 & TEST 2 SANDBOXES*
+We have created 2 active practice sandboxes so every leader can test before our live Friday program:
+
+🧪 *Test Day 1 (Check-In Practice — 2026-09-25):*
+• Go to the *📋 Check-In* tab.
+• Select *“2026-09-25 [TEST SANDBOX]”* from the date dropdown.
+• Practice marking scouts as *P* (Present), *A* (Absent — adds 1 penalty point), or *E* (Excused).
+• Tap *Save & Submit Attendance*.
+
+🛠️ *Test Day 2 (Duties & Points Practice — 2026-09-28):*
+• Go to the *🛡️ Duties* tab and rate scout duty performances (Flag Ceremony, Quran Recitation, Salah Setup) with 1–5 stars.
+• Go to the *👥 Roster* tab, tap any scout to view their profile, and test adding positive points or warnings.
+• Tap *“Download .XLSX”* to test exporting your live Excel roster sheet!
+
+---
+
+⚠️ *SECURITY NOTE ON FUTURE FRIDAYS:*
+The app features an automatic date lock: future Friday dates are locked from early check-in. You can preview upcoming sessions, but attendance can only be submitted on that Friday.
+
+---
+
+🛡️ *PASSWORD RECOVERY & ADMIN SUPPORT:*
+If you ever forget your password, need a reset, or require technical help, please contact either of our 2 designated Troop Admins:
+
+1. 👤 *Troop Leader (Command & Roster Oversight)*
+   • Account: `@leader`
+   • Email: `leader@dhulfiqarscouts.org`
+
+2. 👤 *Troop Admin (Technical Support & Password Recovery)*
+   • Account: `@admin`
+   • Email: `admin@dhulfiqarscouts.org`
+
+_Dhulfiqār Scouting Program • Leadership Portal_ ⚜️
